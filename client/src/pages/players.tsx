@@ -10,7 +10,11 @@ import {
   Search, 
   MoreVertical,
   User,
-  Plus
+  Plus,
+  HandMetal,
+  Sword,
+  Shield,
+  Tag
 } from "lucide-react";
 import { 
   DropdownMenu, 
@@ -45,10 +49,15 @@ export default function PlayersPage() {
       {/* Header */}
       <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border/50 px-6 py-4">
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl text-foreground">Team Roster</h1>
-          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 px-3 py-1">
-            {players.filter(p => p.active).length} Active
-          </Badge>
+          <h1 className="text-2xl text-foreground font-bold">Roster</h1>
+          <div className="flex gap-2">
+             <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+              {players.filter(p => p.active).length} Active
+            </Badge>
+            <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
+              {players.length} Total
+            </Badge>
+          </div>
         </div>
         
         <div className="relative">
@@ -63,50 +72,73 @@ export default function PlayersPage() {
       </div>
 
       {/* List */}
-      <div className="p-4 space-y-3">
+      <div className="p-4 space-y-4">
         <AnimatePresence mode="popLayout">
           {filteredPlayers.length === 0 ? (
             <motion.div 
               initial={{ opacity: 0 }} 
               animate={{ opacity: 1 }}
-              className="text-center py-12 text-muted-foreground"
+              className="text-center py-20 text-muted-foreground"
             >
-              <User className="h-12 w-12 mx-auto mb-3 opacity-20" />
-              <p>No players found.</p>
-              <p className="text-sm">Add some players to get started.</p>
+              <div className="bg-card/50 rounded-full h-20 w-20 flex items-center justify-center mx-auto mb-4 border border-border/50">
+                <User className="h-10 w-10 opacity-20" />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground">Empty Roster</h2>
+              <p className="text-sm max-w-[200px] mx-auto mt-1">Start adding players to build your underwater hockey team.</p>
             </motion.div>
           ) : (
             filteredPlayers.map((player) => (
               <motion.div
                 key={player.id}
                 layout
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
+                exit={{ opacity: 0, scale: 0.98 }}
                 className={`
-                  relative overflow-hidden rounded-xl border border-white/5 bg-card p-4
+                  relative overflow-hidden rounded-2xl border border-white/5 bg-card p-4
                   transition-all duration-300
-                  ${player.active ? 'opacity-100 shadow-md shadow-black/20' : 'opacity-60 bg-card/50 grayscale-[0.5]'}
+                  ${player.active ? 'opacity-100 shadow-lg shadow-black/20' : 'opacity-50 grayscale'}
                 `}
               >
-                {/* Active Indicator Strip */}
-                <div className={`absolute left-0 top-0 bottom-0 w-1 ${player.active ? 'bg-primary' : 'bg-white/10'}`} />
-
-                <div className="flex items-center justify-between pl-3">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex gap-4">
+                    {/* Rating Avatar */}
                     <div className={`
-                      h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm
-                      ${player.active ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground'}
+                      h-12 w-12 rounded-xl flex flex-col items-center justify-center border border-white/10
+                      ${player.active ? 'bg-gradient-to-br from-primary/30 to-primary/10 text-primary' : 'bg-secondary text-muted-foreground'}
                     `}>
-                      {player.rating}
+                      <span className="text-xl font-bold leading-none">{player.rating.toFixed(0)}</span>
+                      <span className="text-[10px] uppercase font-bold tracking-tighter opacity-60">SR</span>
                     </div>
+                    
                     <div>
-                      <h3 className="font-semibold text-lg leading-tight">{player.name}</h3>
-                      <p className="text-xs text-muted-foreground">{player.active ? 'Active' : 'Inactive'}</p>
+                      <h3 className="font-bold text-lg leading-tight flex items-center gap-2">
+                        {player.name}
+                        {!player.active && <Badge variant="secondary" className="text-[10px] h-4 px-1 leading-none uppercase">Off</Badge>}
+                      </h3>
+                      
+                      {/* Stats Badges */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full border border-white/5">
+                          <HandMetal className="h-2.5 w-2.5" />
+                          {player.weakHandRating.toFixed(1)}
+                        </div>
+                        {player.tags.slice(0, 2).map(tag => (
+                          <div key={tag} className="flex items-center gap-1 text-[10px] font-bold text-cyan-400 bg-cyan-400/5 px-2 py-0.5 rounded-full border border-cyan-400/10">
+                            <Tag className="h-2.5 w-2.5" />
+                            {tag}
+                          </div>
+                        ))}
+                        {player.tags.length > 2 && (
+                          <div className="text-[10px] font-bold text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full">
+                            +{player.tags.length - 2}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-end gap-3">
                     <Switch 
                       checked={player.active}
                       onCheckedChange={(checked) => handleToggleActive(player.id, checked)}
@@ -115,24 +147,38 @@ export default function PlayersPage() {
                     
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-32 bg-card border-border">
-                        <DropdownMenuItem onClick={() => handleEdit(player)}>
-                          <Edit className="mr-2 h-4 w-4" /> Edit
+                      <DropdownMenuContent align="end" className="w-32 bg-card border-border shadow-2xl">
+                        <DropdownMenuItem onClick={() => handleEdit(player)} className="gap-2">
+                          <Edit className="h-4 w-4" /> Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem 
-                          className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                          className="text-destructive focus:text-destructive focus:bg-destructive/10 gap-2"
                           onClick={() => deletePlayer(player.id)}
                         >
-                          <Trash2 className="mr-2 h-4 w-4" /> Delete
+                          <Trash2 className="h-4 w-4" /> Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
                 </div>
+
+                {/* Preferred Positions Quick View */}
+                {player.active && (
+                  <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-2 gap-2">
+                    <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+                      <Sword className="h-3 w-3 text-primary/60" />
+                      <span className="truncate">3-3: {(player.formationPreferences as any)?.["3-3"]?.main || "None"}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+                      <Shield className="h-3 w-3 text-cyan-400/60" />
+                      <span className="truncate">1-3-2: {(player.formationPreferences as any)?.["1-3-2"]?.main || "None"}</span>
+                    </div>
+                  </div>
+                )}
               </motion.div>
             ))
           )}
@@ -153,9 +199,9 @@ export default function PlayersPage() {
         <AddPlayerDialog>
           <Button 
             size="icon" 
-            className="h-14 w-14 rounded-full shadow-xl shadow-primary/30 bg-primary hover:bg-primary/90 text-primary-foreground transition-transform hover:scale-110 active:scale-95"
+            className="h-16 w-16 rounded-full shadow-2xl shadow-primary/40 bg-primary hover:bg-primary/90 text-primary-foreground transition-all hover:scale-110 active:scale-95"
           >
-            <Plus className="h-6 w-6" />
+            <Plus className="h-8 w-8" />
           </Button>
         </AddPlayerDialog>
       </div>

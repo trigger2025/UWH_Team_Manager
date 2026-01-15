@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, FormationType, FormationPosition } from "@shared/schema";
 import { storage, AppData } from "@/lib/storage";
 
 interface AppState extends AppData {
-  addPlayer: (player: Omit<Player, "id" | "createdAt" | "rating" | "weakHandRating" | "formationPreferences" | "tags" | "ratingHistory" | "wins" | "losses" | "draws" | "active">) => void;
+  addPlayer: (player: any) => void;
   updatePlayer: (id: number, updates: Partial<Player>) => void;
   deletePlayer: (id: number) => void;
   saveMatchResult: (result: Omit<Match, "id">) => void;
@@ -18,7 +18,6 @@ const AppContext = createContext<AppState | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppData>(() => storage.loadAllData());
 
-  // Auto-persist to localStorage when state changes
   useEffect(() => {
     storage.saveAllData(state);
   }, [state]);
@@ -27,10 +26,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newPlayer: Player = {
       ...playerData,
       id: Math.floor(Math.random() * 1000000),
-      rating: 5.0,
-      weakHandRating: 3.0,
-      formationPreferences: {},
-      tags: [],
+      rating: playerData.rating ?? 5.0,
+      weakHandRating: playerData.weakHandRating ?? 3.0,
+      formationPreferences: playerData.formationPreferences ?? {},
+      tags: playerData.tags ?? [],
       ratingHistory: [],
       wins: 0,
       losses: 0,
@@ -84,12 +83,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const recalculatePlayerStatsFromResults = useCallback(() => {
     setState(prev => {
       const playerStats = new Map<number, { wins: number; losses: number; draws: number }>();
-      
       prev.players.forEach(p => playerStats.set(p.id, { wins: 0, losses: 0, draws: 0 }));
 
       prev.matchResults.forEach(match => {
         if (!match.completed || match.blackScore === null || match.whiteScore === null) return;
-
         const teams = match.teams as any;
         const blackPlayerIds = teams.black.players.map((p: any) => p.playerId);
         const whitePlayerIds = teams.white.players.map((p: any) => p.playerId);
