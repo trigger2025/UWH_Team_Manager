@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPlayerSchema, type InsertPlayer, type Player, FormationType, FormationPosition } from "@shared/schema";
 import { useApp } from "@/context/AppContext";
@@ -11,7 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Plus, User, Trash2, X } from "lucide-react";
+import { Plus, User, X } from "lucide-react";
 
 interface AddPlayerDialogProps {
   playerToEdit?: Player;
@@ -37,7 +37,7 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
       weakHandRating: playerToEdit.weakHandRating,
       active: playerToEdit.active,
       tags: playerToEdit.tags,
-      formationPreferences: playerToEdit.formationPreferences,
+      formationPreferences: playerToEdit.formationPreferences as any,
     } : {
       name: "",
       rating: 5,
@@ -47,21 +47,23 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
       formationPreferences: {
         "3-3": { main: "Center Forward", alternates: [] },
         "1-3-2": { main: "Goalie", alternates: [] }
-      },
+      } as any,
     },
   });
 
   const [tagInput, setTagInput] = useState("");
 
   const addTag = () => {
-    if (tagInput && !form.getValues("tags").includes(tagInput)) {
-      form.setValue("tags", [...form.getValues("tags"), tagInput]);
+    const currentTags = form.getValues("tags") || [];
+    if (tagInput && !currentTags.includes(tagInput)) {
+      form.setValue("tags", [...currentTags, tagInput]);
       setTagInput("");
     }
   };
 
   const removeTag = (tag: string) => {
-    form.setValue("tags", form.getValues("tags").filter(t => t !== tag));
+    const currentTags = form.getValues("tags") || [];
+    form.setValue("tags", currentTags.filter(t => t !== tag));
   };
 
   const onSubmit = (data: InsertPlayer) => {
@@ -126,7 +128,7 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
                   <div className="flex justify-between items-center">
                     <Label className="text-muted-foreground">Main Rating</Label>
                     <span className="text-xl font-display font-bold text-primary">
-                      {form.watch("rating")?.toFixed(1) ?? 5}
+                      {(form.watch("rating") ?? 5).toFixed(1)}
                     </span>
                   </div>
                   <Slider
@@ -142,7 +144,7 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
                   <div className="flex justify-between items-center">
                     <Label className="text-muted-foreground">Weak Hand</Label>
                     <span className="text-xl font-display font-bold text-cyan-400">
-                      {form.watch("weakHandRating")?.toFixed(1) ?? 3}
+                      {(form.watch("weakHandRating") ?? 3).toFixed(1)}
                     </span>
                   </div>
                   <Slider
@@ -168,7 +170,7 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
                   <Button type="button" onClick={addTag} variant="secondary">Add</Button>
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {form.watch("tags").map(tag => (
+                  {(form.watch("tags") || []).map(tag => (
                     <Badge key={tag} variant="secondary" className="flex items-center gap-1">
                       {tag}
                       <X className="h-3 w-3 cursor-pointer" onClick={() => removeTag(tag)} />
@@ -181,7 +183,8 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
             <TabsContent value="formations" className="space-y-6">
               {["3-3", "1-3-2"].map((fType) => {
                 const formation = fType as FormationType;
-                const pref = (form.watch("formationPreferences") as any)[formation] || { main: "Center Forward", alternates: [] };
+                const prefs = (form.watch("formationPreferences") as any) || {};
+                const pref = prefs[formation] || { main: "Center Forward", alternates: [] };
                 
                 return (
                   <div key={formation} className="p-4 rounded-lg border border-border/50 bg-background/30 space-y-4">
@@ -195,11 +198,11 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
                       <Select 
                         value={pref.main} 
                         onValueChange={(val) => {
-                          const currentPrefs = form.getValues("formationPreferences") as any;
+                          const currentPrefs = (form.getValues("formationPreferences") as any) || {};
                           form.setValue("formationPreferences", {
                             ...currentPrefs,
                             [formation]: { ...pref, main: val }
-                          });
+                          } as any);
                         }}
                       >
                         <SelectTrigger>
@@ -214,26 +217,26 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Alternate Positions</Label>
                       <div className="flex flex-wrap gap-2">
-                        {pref.alternates.map((pos: string) => (
+                        {(pref.alternates || []).map((pos: string) => (
                           <Badge key={pos} variant="outline" className="flex items-center gap-1">
                             {pos}
                             <X className="h-3 w-3 cursor-pointer" onClick={() => {
-                              const currentPrefs = form.getValues("formationPreferences") as any;
+                              const currentPrefs = (form.getValues("formationPreferences") as any) || {};
                               form.setValue("formationPreferences", {
                                 ...currentPrefs,
                                 [formation]: { ...pref, alternates: pref.alternates.filter((a: string) => a !== pos) }
-                              });
+                              } as any);
                             }} />
                           </Badge>
                         ))}
-                        {pref.alternates.length < 3 && (
+                        {(pref.alternates || []).length < 3 && (
                           <Select onValueChange={(val) => {
                             if (!pref.alternates.includes(val)) {
-                              const currentPrefs = form.getValues("formationPreferences") as any;
+                              const currentPrefs = (form.getValues("formationPreferences") as any) || {};
                               form.setValue("formationPreferences", {
                                 ...currentPrefs,
                                 [formation]: { ...pref, alternates: [...pref.alternates, val] }
-                              });
+                              } as any);
                             }
                           }}>
                             <SelectTrigger className="w-full h-8 border-dashed">
