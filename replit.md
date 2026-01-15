@@ -1,0 +1,66 @@
+# Overview
+
+This is an Underwater Hockey (UWH) team management application built with React and Express. The app helps manage player rosters, generate balanced teams for matches, and track match history. It uses a mobile-first design with a bottom navigation pattern and persists all data locally via localStorage - no backend API calls are required for core functionality.
+
+# User Preferences
+
+Preferred communication style: Simple, everyday language.
+
+# System Architecture
+
+## Frontend Architecture
+- **Framework**: React with TypeScript, bundled via Vite
+- **Routing**: Wouter for lightweight client-side routing
+- **State Management**: React Query for async state management (used with localStorage, not API calls), React Context for global app state
+- **UI Components**: shadcn/ui component library built on Radix UI primitives
+- **Styling**: Tailwind CSS with CSS custom properties for theming (oceanic/nautical dark theme)
+- **Animations**: Framer Motion for smooth transitions
+- **Forms**: React Hook Form with Zod validation
+
+## Backend Architecture
+- **Framework**: Express.js with TypeScript
+- **Purpose**: Minimal - primarily serves static files in production and Vite dev server in development
+- **API Routes**: Currently empty - the app is designed to be local-only with localStorage persistence
+- **Database Schema**: Drizzle ORM with PostgreSQL schema defined (for potential future use), but not actively used
+
+## Data Persistence
+- **Primary Storage**: Browser localStorage
+- **Storage Layer**: Custom storage utilities in `client/src/lib/storage.ts` and context provider in `client/src/context/AppContext.tsx`
+- **Data Models**: Players, Matches, Admin Settings, Pool Rotation History, Preset Teams
+
+## Key Design Patterns
+- **Mobile-First**: Bottom navigation bar, touch-optimized UI
+- **Offline-First**: All data stored locally, no network dependency for core features
+- **Component Architecture**: Shared UI components in `client/src/components/ui/`, page components in `client/src/pages/`
+- **Path Aliases**: `@/` maps to `client/src/`, `@shared/` maps to `shared/`
+
+## Build System
+- **Development**: Vite dev server with HMR, proxied through Express
+- **Production**: Vite builds client to `dist/public/`, esbuild bundles server to `dist/index.cjs`
+- **Database Migrations**: Drizzle Kit for schema management (`npm run db:push`)
+
+# External Dependencies
+
+## Database
+- **PostgreSQL**: Configured via Drizzle ORM, requires `DATABASE_URL` environment variable
+- **Connection**: Uses `pg` Pool with `connect-pg-simple` for session storage capability
+- **Note**: Database is configured but not actively used - app currently runs on localStorage
+
+## UI Libraries
+- **Radix UI**: Headless component primitives (dialogs, dropdowns, tabs, etc.)
+- **shadcn/ui**: Pre-styled component library (configured via `components.json`)
+- **Lucide React**: Icon library
+- **Embla Carousel**: Carousel functionality
+
+## Replit-Specific
+- **@replit/vite-plugin-runtime-error-modal**: Error overlay for development
+- **@replit/vite-plugin-cartographer**: Development tooling (dev only)
+- **@replit/vite-plugin-dev-banner**: Development banner (dev only)
+
+## Validation & Forms
+- **Zod**: Schema validation
+- **drizzle-zod**: Zod schema generation from Drizzle schemas
+- **React Hook Form**: Form state management with `@hookform/resolvers`
+
+## Date Handling
+- **date-fns**: Date formatting and manipulation
