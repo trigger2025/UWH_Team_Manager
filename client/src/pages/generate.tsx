@@ -1,218 +1,241 @@
 import { useState } from "react";
-import { usePlayers } from "@/hooks/use-players";
-import { useSaveMatch } from "@/hooks/use-matches";
+import { useApp } from "@/context/AppContext";
+import { generateTeams } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
-import { Player } from "@shared/schema";
-import { Shuffle, Save, RotateCcw, Share2, Swords } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { format } from "date-fns";
-
-type Team = {
-  name: string;
-  color: "white" | "black";
-  players: Player[];
-  avgRating: number;
-};
+import { Separator } from "@/components/ui/separator";
+import { 
+  Users, 
+  Swords, 
+  RefreshCw, 
+  ChevronRight,
+  UserCheck,
+  Trophy,
+  History
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { GeneratedTeam, Player } from "@shared/schema";
 
 export default function GeneratePage() {
-  const { data: allPlayers, isLoading } = usePlayers();
-  const saveMatchMutation = useSaveMatch();
-  
-  const [teams, setTeams] = useState<[Team, Team] | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const { players, saveMatchResult } = useApp();
+  const [selectedIds, setSelectedIds] = useState<number[]>(() => 
+    players.filter(p => p.active).map(p => p.id)
+  );
+  const [generatedTeams, setGeneratedTeams] = useState<{ black: GeneratedTeam; white: GeneratedTeam } | null>(null);
 
-  // Filter only active players
-  const activePlayers = allPlayers?.filter(p => p.active) || [];
+  const activePlayers = players.filter(p => p.active);
 
-  const generateTeams = async () => {
-    if (activePlayers.length < 2) return;
-    
-    setIsGenerating(true);
-    setTeams(null);
-
-    // Simulate calculation delay for dramatic effect
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    // Simple balanced algorithm
-    // 1. Sort by rating desc
-    const sorted = [...activePlayers].sort((a, b) => b.rating - a.rating);
-    
-    // 2. Snake draft distribution
-    const team1Players: Player[] = [];
-    const team2Players: Player[] = [];
-    
-    sorted.forEach((player, index) => {
-      // Snake: 0->A, 1->B, 2->B, 3->A, 4->A, 5->B...
-      if (index % 4 === 0 || index % 4 === 3) {
-        team1Players.push(player);
-      } else {
-        team2Players.push(player);
-      }
-    });
-
-    const calcAvg = (ps: Player[]) => 
-      ps.length ? ps.reduce((acc, p) => acc + p.rating, 0) / ps.length : 0;
-
-    setTeams([
-      { name: "White Team", color: "white", players: team1Players, avgRating: calcAvg(team1Players) },
-      { name: "Black Team", color: "black", players: team2Players, avgRating: calcAvg(team2Players) },
-    ]);
-    
-    setIsGenerating(false);
+  const togglePlayer = (id: number) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
   };
 
-  const handleSave = () => {
-    if (!teams) return;
-    saveMatchMutation.mutate({
-      date: new Date().toISOString(),
-      teams: teams
+  const handleGenerate = () => {
+    const selectedPlayers = players.filter(p => selectedIds.includes(p.id));
+    if (selectedPlayers.length < 2) return;
+
+    const result = generateTeams(selectedPlayers, { black: "3-3", white: "3-3" });
+    setGeneratedTeams(result);
+  };
+
+  const handleSaveResult = () => {
+    if (!generatedTeams) return;
+    saveMatchResult({
+      date: new Date(),
+      teams: generatedTeams,
+      completed: false,
+      poolId: null,
+      formation: "3-3",
+      blackScore: null,
+      whiteScore: null,
+      tournamentId: null,
     });
+    // Optional: show toast or redirect
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24 px-4 pt-6">
-      <div className="max-w-md mx-auto space-y-6">
-        
-        {/* Header Section */}
-        <div className="text-center space-y-2 mb-8">
-          <div className="inline-flex items-center justify-center p-3 rounded-full bg-primary/10 mb-2">
-            <Swords className="h-8 w-8 text-primary" />
-          </div>
-          <h1 className="text-3xl font-display text-foreground">Match Generator</h1>
-          <p className="text-muted-foreground">
-            {activePlayers.length} Active Players Ready
-          </p>
-        </div>
+    <div className="min-h-screen bg-background pb-24">
+      {/* Header */}
+      <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border/50 px-6 py-4">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Swords className="h-6 w-6 text-primary" />
+          Generate Teams
+        </h1>
+      </div>
 
-        {/* Action Button */}
-        {!teams && (
-          <div className="flex justify-center">
-            <Button 
-              size="lg" 
-              onClick={generateTeams}
-              disabled={isGenerating || activePlayers.length < 2}
-              className="h-16 px-8 rounded-2xl text-lg font-bold shadow-xl shadow-primary/20 bg-primary hover:bg-primary/90 transition-all active:scale-95"
+      <div className="p-4 space-y-6">
+        <AnimatePresence mode="wait">
+          {!generatedTeams ? (
+            <motion.div
+              key="selection"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              className="space-y-4"
             >
-              {isGenerating ? (
-                <div className="flex items-center gap-2">
-                  <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Generating...
-                </div>
-              ) : (
-                <>
-                  <Shuffle className="mr-2 h-5 w-5" />
-                  Generate Teams
-                </>
-              )}
-            </Button>
-          </div>
-        )}
+              <Card className="border-border/50 bg-card/50">
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      Select Players ({selectedIds.length})
+                    </CardTitle>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setSelectedIds(activePlayers.map(p => p.id))}
+                      className="text-xs h-7"
+                    >
+                      Select All Active
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 gap-2">
+                  {activePlayers.map(player => (
+                    <div 
+                      key={player.id}
+                      onClick={() => togglePlayer(player.id)}
+                      className={`
+                        flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer
+                        ${selectedIds.includes(player.id) 
+                          ? 'bg-primary/10 border-primary/30' 
+                          : 'bg-background/50 border-transparent hover:border-border'}
+                      `}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`
+                          h-8 w-8 rounded-lg flex items-center justify-center font-bold text-xs
+                          ${selectedIds.includes(player.id) ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}
+                        `}>
+                          {player.rating.toFixed(0)}
+                        </div>
+                        <span className="font-medium">{player.name}</span>
+                      </div>
+                      <Checkbox checked={selectedIds.includes(player.id)} />
+                    </div>
+                  ))}
+                  {activePlayers.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <p className="text-sm">No active players in roster.</p>
+                      <p className="text-xs">Go to Players tab to activate some.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
-        {/* Results Display */}
-        <AnimatePresence>
-          {teams && (
-            <motion.div 
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9 }}
+              <Button 
+                className="w-full h-14 rounded-2xl text-lg font-bold gap-2 shadow-lg shadow-primary/20"
+                disabled={selectedIds.length < 2}
+                onClick={handleGenerate}
+              >
+                <RefreshCw className="h-5 w-5" />
+                Generate {selectedIds.length} Players
+              </Button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="results"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
               className="space-y-6"
             >
-              {/* Teams Comparison */}
-              <div className="flex justify-center gap-4 text-xs font-medium text-muted-foreground mb-4">
-                <div className="bg-card px-3 py-1 rounded-full border border-white/5">
-                  Avg: {teams[0].avgRating.toFixed(1)}
+              <div className="grid grid-cols-1 gap-4">
+                {/* Black Team */}
+                <Card className="border-primary/20 bg-card overflow-hidden">
+                  <div className="bg-primary/10 px-4 py-3 flex justify-between items-center border-b border-primary/10">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-primary animate-pulse" />
+                      <h3 className="font-bold text-primary">Team Black</h3>
+                    </div>
+                    <Badge variant="outline" className="bg-background/50">
+                      Avg: {(generatedTeams.black.totalRating / (generatedTeams.black.players.length || 1)).toFixed(1)}
+                    </Badge>
+                  </div>
+                  <CardContent className="p-0">
+                    {generatedTeams.black.players.map((p, i) => (
+                      <div key={p.id} className={`flex items-center justify-between px-4 py-3 ${i !== generatedTeams.black.players.length - 1 ? 'border-b border-border/30' : ''}`}>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-mono opacity-40">#{i+1}</span>
+                          <span className="font-medium">{p.name}</span>
+                        </div>
+                        <Badge variant="secondary" className="text-[10px] font-bold uppercase tracking-tight">
+                          {p.assignedPosition}
+                        </Badge>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                <div className="flex items-center justify-center">
+                  <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                    <span className="text-xs font-bold text-muted-foreground">VS</span>
+                  </div>
                 </div>
-                <div className="bg-card px-3 py-1 rounded-full border border-white/5">
-                  Avg: {teams[1].avgRating.toFixed(1)}
-                </div>
+
+                {/* White Team */}
+                <Card className="border-cyan-400/20 bg-card overflow-hidden">
+                  <div className="bg-cyan-400/10 px-4 py-3 flex justify-between items-center border-b border-cyan-400/10">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-cyan-400" />
+                      <h3 className="font-bold text-cyan-400">Team White</h3>
+                    </div>
+                    <Badge variant="outline" className="bg-background/50">
+                      Avg: {(generatedTeams.white.totalRating / (generatedTeams.white.players.length || 1)).toFixed(1)}
+                    </Badge>
+                  </div>
+                  <CardContent className="p-0">
+                    {generatedTeams.white.players.map((p, i) => (
+                      <div key={p.id} className={`flex items-center justify-between px-4 py-3 ${i !== generatedTeams.white.players.length - 1 ? 'border-b border-border/30' : ''}`}>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-mono opacity-40">#{i+1}</span>
+                          <span className="font-medium">{p.name}</span>
+                        </div>
+                        <Badge variant="secondary" className="text-[10px] font-bold uppercase tracking-tight">
+                          {p.assignedPosition}
+                        </Badge>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
               </div>
 
-              {/* White Team Card */}
-              <TeamCard team={teams[0]} delay={0.1} />
-
-              {/* VS Badge */}
-              <div className="flex justify-center -my-3 relative z-10">
-                <span className="bg-background border border-border px-3 py-1 rounded-full text-xs font-bold text-muted-foreground shadow-sm">
-                  VS
-                </span>
+              <div className="flex flex-col gap-3">
+                <Button 
+                  variant="outline" 
+                  className="w-full h-12 rounded-xl gap-2"
+                  onClick={() => setGeneratedTeams(null)}
+                >
+                  <History className="h-4 w-4" />
+                  Reselect Players
+                </Button>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button 
+                    variant="secondary"
+                    className="h-12 rounded-xl gap-2"
+                    onClick={handleGenerate}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Re-roll
+                  </Button>
+                  <Button 
+                    className="h-12 rounded-xl gap-2"
+                    onClick={handleSaveResult}
+                  >
+                    <UserCheck className="h-4 w-4" />
+                    Confirm
+                  </Button>
+                </div>
               </div>
-
-              {/* Black Team Card */}
-              <TeamCard team={teams[1]} delay={0.2} />
-
-              {/* Action Bar */}
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="grid grid-cols-2 gap-3 pt-4"
-              >
-                <Button variant="outline" size="lg" onClick={generateTeams} className="h-12 border-primary/20 text-primary hover:bg-primary/5">
-                  <RotateCcw className="mr-2 h-4 w-4" /> Reroll
-                </Button>
-                <Button size="lg" onClick={handleSave} disabled={saveMatchMutation.isPending} className="h-12">
-                  <Save className="mr-2 h-4 w-4" /> 
-                  {saveMatchMutation.isPending ? "Saving..." : "Save Match"}
-                </Button>
-              </motion.div>
-
             </motion.div>
           )}
         </AnimatePresence>
-
-        {activePlayers.length < 2 && !teams && (
-          <div className="text-center p-6 border border-dashed border-white/10 rounded-xl bg-white/5">
-            <p className="text-muted-foreground text-sm">Not enough active players.</p>
-            <Button variant="link" className="text-primary" onClick={() => window.location.href='/players'}>
-              Go to Players Tab
-            </Button>
-          </div>
-        )}
-
       </div>
+
       <BottomNav />
     </div>
-  );
-}
-
-function TeamCard({ team, delay }: { team: Team, delay: number }) {
-  const isWhite = team.color === 'white';
-  
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: isWhite ? -20 : 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay }}
-    >
-      <Card className={`
-        border-none overflow-hidden shadow-lg
-        ${isWhite ? 'bg-white text-slate-900' : 'bg-slate-900 text-white border border-white/10'}
-      `}>
-        <div className={`h-2 w-full ${isWhite ? 'bg-slate-200' : 'bg-slate-800'}`} />
-        <CardHeader className="pb-2">
-          <CardTitle className="flex justify-between items-center text-lg">
-            <span>{team.name}</span>
-            <Badge variant={isWhite ? "secondary" : "outline"} className="font-mono text-xs">
-              {team.players.length} Players
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ul className="space-y-2">
-            {team.players.map((p) => (
-              <li key={p.id} className="flex justify-between items-center text-sm">
-                <span className="font-medium opacity-90">{p.name}</span>
-                <span className={`text-xs font-mono opacity-60 ${isWhite ? 'bg-slate-100' : 'bg-slate-800'} px-1.5 py-0.5 rounded`}>
-                  {p.rating}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-    </motion.div>
   );
 }
