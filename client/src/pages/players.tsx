@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { usePlayers, useUpdatePlayer, useDeletePlayer } from "@/hooks/use-players";
+import { useApp } from "@/context/AppContext";
 import { AddPlayerDialog } from "@/components/add-player-dialog";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
@@ -8,9 +8,9 @@ import {
   Trash2, 
   Edit, 
   Search, 
-  Swords, 
   MoreVertical,
-  User
+  User,
+  Plus
 } from "lucide-react";
 import { 
   DropdownMenu, 
@@ -24,34 +24,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Player } from "@shared/schema";
 
 export default function PlayersPage() {
-  const { data: players, isLoading } = usePlayers();
-  const updateMutation = useUpdatePlayer();
-  const deleteMutation = useDeletePlayer();
+  const { players, updatePlayer, deletePlayer } = useApp();
   const [search, setSearch] = useState("");
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
 
-  const filteredPlayers = players?.filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase())
-  ).sort((a, b) => a.name.localeCompare(b.name)) || [];
+  const filteredPlayers = players
+    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const handleToggleActive = (id: number, active: boolean) => {
-    updateMutation.mutate({ id, active });
+    updatePlayer(id, { active });
   };
 
   const handleEdit = (player: Player) => {
     setEditingPlayer(player);
   };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-12 w-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-muted-foreground animate-pulse">Loading roster...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -60,7 +47,7 @@ export default function PlayersPage() {
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl text-foreground">Team Roster</h1>
           <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 px-3 py-1">
-            {players?.filter(p => p.active).length} Active
+            {players.filter(p => p.active).length} Active
           </Badge>
         </div>
         
@@ -138,7 +125,7 @@ export default function PlayersPage() {
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                          onClick={() => deleteMutation.mutate(player.id)}
+                          onClick={() => deletePlayer(player.id)}
                         >
                           <Trash2 className="mr-2 h-4 w-4" /> Delete
                         </DropdownMenuItem>
@@ -175,20 +162,5 @@ export default function PlayersPage() {
 
       <BottomNav />
     </div>
-  );
-}
-
-// Icon helper
-function Plus({ className }: { className?: string }) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" height="24" viewBox="0 0 24 24" 
-      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" 
-      className={className}
-    >
-      <path d="M5 12h14" />
-      <path d="M12 5v14" />
-    </svg>
   );
 }
