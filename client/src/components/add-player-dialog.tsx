@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPlayerSchema, type InsertPlayer, type Player } from "@shared/schema";
-import { useCreatePlayer, useUpdatePlayer } from "@/hooks/use-players";
+import { useApp } from "@/context/AppContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,7 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
   const open = isControlled ? controlledOpen : uncontrolledOpen;
   const setOpen = isControlled ? controlledOnOpenChange! : setUncontrolledOpen;
 
-  const createMutation = useCreatePlayer();
-  const updateMutation = useUpdatePlayer();
+  const { addPlayer, updatePlayer } = useApp();
   const isEditing = !!playerToEdit;
 
   const form = useForm<InsertPlayer>({
@@ -42,20 +41,14 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
 
   const onSubmit = (data: InsertPlayer) => {
     if (isEditing && playerToEdit) {
-      updateMutation.mutate({ id: playerToEdit.id, ...data }, {
-        onSuccess: () => setOpen(false),
-      });
+      updatePlayer(playerToEdit.id, data);
+      setOpen(false);
     } else {
-      createMutation.mutate(data, {
-        onSuccess: () => {
-          setOpen(false);
-          form.reset();
-        },
-      });
+      addPlayer(data);
+      setOpen(false);
+      form.reset();
     }
   };
-
-  const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -94,14 +87,14 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
             <div className="flex justify-between items-center">
               <Label className="text-muted-foreground">Rating</Label>
               <span className="text-2xl font-display font-bold text-primary">
-                {form.watch("rating")}
+                {form.watch("rating") ?? 5}
               </span>
             </div>
             <Slider
               min={1}
               max={10}
               step={1}
-              value={[form.watch("rating")]}
+              value={[form.watch("rating") ?? 5]}
               onValueChange={(val) => form.setValue("rating", val[0])}
               className="py-4"
             />
@@ -115,9 +108,8 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
             <Button 
               type="submit" 
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold h-11 rounded-lg transition-all active:scale-[0.98]"
-              disabled={isLoading}
             >
-              {isLoading ? "Saving..." : (isEditing ? "Save Changes" : "Add Player")}
+              {isEditing ? "Save Changes" : "Add Player"}
             </Button>
           </DialogFooter>
         </form>
