@@ -1,89 +1,147 @@
-import { z } from "zod";
-import { insertPlayerSchema, type Player, type Match } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, InsertPlayer } from "@shared/schema";
 
-// Local Storage Keys
-const PLAYERS_KEY = "uwh_players";
-const MATCHES_KEY = "uwh_matches";
+export const STORAGE_KEYS = {
+  PLAYERS: "uwh_players",
+  MATCH_RESULTS: "uwh_match_results",
+  ADMIN_SETTINGS: "uwh_admin_settings",
+  POOL_ROTATION_HISTORY: "uwh_pool_rotation_history",
+  PRESET_TEAMS: "uwh_preset_teams",
+} as const;
 
-// Delay to simulate "database" feeling and show off UI states
-const DELAY = 400;
+export interface AppData {
+  players: Player[];
+  matchResults: Match[];
+  adminSettings: AdminSettings[];
+  poolRotationHistory: PoolRotationEntry[];
+  presetTeams: PresetTeam[];
+}
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Helper to generate IDs
 const generateId = () => Math.floor(Math.random() * 1000000);
 
-// --- PLAYERS API ---
+export const storage = {
+  read<T>(key: string, defaultValue: T): T {
+    try {
+      const item = localStorage.getItem(key);
+      if (!item) return defaultValue;
+      return JSON.parse(item) as T;
+    } catch (error) {
+      console.error(`Error reading key "${key}" from localStorage:`, error);
+      return defaultValue;
+    }
+  },
 
-export const getPlayers = async (): Promise<Player[]> => {
-  await delay(DELAY);
-  const data = localStorage.getItem(PLAYERS_KEY);
-  return data ? JSON.parse(data) : [];
+  write<T>(key: string, value: T): void {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error(`Error writing key "${key}" to localStorage:`, error);
+    }
+  },
+
+  loadAllData(): AppData {
+    return {
+      players: this.read<Player[]>(STORAGE_KEYS.PLAYERS, []),
+      matchResults: this.read<Match[]>(STORAGE_KEYS.MATCH_RESULTS, []),
+      adminSettings: this.read<AdminSettings[]>(STORAGE_KEYS.ADMIN_SETTINGS, []),
+      poolRotationHistory: this.read<PoolRotationEntry[]>(STORAGE_KEYS.POOL_ROTATION_HISTORY, []),
+      presetTeams: this.read<PresetTeam[]>(STORAGE_KEYS.PRESET_TEAMS, []),
+    };
+  },
+
+  saveAllData(data: Partial<AppData>): void {
+    if (data.players) this.write(STORAGE_KEYS.PLAYERS, data.players);
+    if (data.matchResults) this.write(STORAGE_KEYS.MATCH_RESULTS, data.matchResults);
+    if (data.adminSettings) this.write(STORAGE_KEYS.ADMIN_SETTINGS, data.adminSettings);
+    if (data.poolRotationHistory) this.write(STORAGE_KEYS.POOL_ROTATION_HISTORY, data.poolRotationHistory);
+    if (data.presetTeams) this.write(STORAGE_KEYS.PRESET_TEAMS, data.presetTeams);
+  },
+
+  clearAllData(): void {
+    Object.values(STORAGE_KEYS).forEach((key) => {
+      localStorage.removeItem(key);
+    });
+  },
+
+  getPlayers(): Player[] {
+    return this.read<Player[]>(STORAGE_KEYS.PLAYERS, []);
+  },
+
+  setPlayers(players: Player[]): void {
+    this.write(STORAGE_KEYS.PLAYERS, players);
+  },
+
+  getMatches(): Match[] {
+    return this.read<Match[]>(STORAGE_KEYS.MATCH_RESULTS, []);
+  },
+
+  setMatches(matches: Match[]): void {
+    this.write(STORAGE_KEYS.MATCH_RESULTS, matches);
+  },
 };
 
-export const createPlayer = async (player: z.infer<typeof insertPlayerSchema>): Promise<Player> => {
-  await delay(DELAY);
-  const players = await getPlayers();
+// --- Compatibility Exports for Existing Hooks ---
+
+export const getPlayers = async (): Promise<Player[]> => {
+  return storage.getPlayers();
+};
+
+export const createPlayer = async (player: InsertPlayer): Promise<Player> => {
+  const players = storage.getPlayers();
   const newPlayer: Player = {
+    ...player,
     id: generateId(),
-    name: player.name,
-    rating: player.rating,
+    rating: player.rating ?? 5.0,
+    weakHandRating: player.weakHandRating ?? 3.0,
+    formationPreferences: player.formationPreferences ?? {},
+    tags: player.tags ?? [],
+    ratingHistory: player.ratingHistory ?? [],
+    wins: player.wins ?? 0,
+    losses: player.losses ?? 0,
+    draws: player.draws ?? 0,
     active: player.active ?? true,
+    createdAt: new Date(),
   };
-  
-  // Implicitly handle duplicate updates if needed, but here we just append
-  const updatedPlayers = [...players, newPlayer];
-  localStorage.setItem(PLAYERS_KEY, JSON.stringify(updatedPlayers));
+  storage.setPlayers([...players, newPlayer]);
   return newPlayer;
 };
 
 export const updatePlayer = async (id: number, updates: Partial<Player>): Promise<Player> => {
-  await delay(DELAY);
-  const players = await getPlayers();
+  const players = storage.getPlayers();
   const index = players.findIndex((p) => p.id === id);
-  
   if (index === -1) throw new Error("Player not found");
-  
   const updatedPlayer = { ...players[index], ...updates };
   players[index] = updatedPlayer;
-  
-  localStorage.setItem(PLAYERS_KEY, JSON.stringify(players));
+  storage.setPlayers(players);
   return updatedPlayer;
 };
 
 export const deletePlayer = async (id: number): Promise<void> => {
-  await delay(DELAY);
-  const players = await getPlayers();
-  const filtered = players.filter((p) => p.id !== id);
-  localStorage.setItem(PLAYERS_KEY, JSON.stringify(filtered));
+  const players = storage.getPlayers();
+  storage.setPlayers(players.filter((p) => p.id !== id));
 };
 
-// --- MATCHES API ---
-
 export const getMatches = async (): Promise<Match[]> => {
-  await delay(DELAY);
-  const data = localStorage.getItem(MATCHES_KEY);
-  return data ? JSON.parse(data) : [];
+  return storage.getMatches();
 };
 
 export const saveMatch = async (matchData: { teams: any; date: string }): Promise<Match> => {
-  await delay(DELAY);
-  const matches = await getMatches();
+  const matches = storage.getMatches();
   const newMatch: Match = {
     id: generateId(),
-    date: matchData.date,
+    date: new Date(matchData.date),
     teams: matchData.teams,
     completed: false,
+    poolId: null,
+    formation: "3-3",
+    blackScore: null,
+    whiteScore: null,
+    tournamentId: null,
   };
-  
-  const updatedMatches = [newMatch, ...matches]; // Newest first
-  localStorage.setItem(MATCHES_KEY, JSON.stringify(updatedMatches));
+  storage.setMatches([newMatch, ...matches]);
   return newMatch;
 };
 
 export const deleteMatch = async (id: number): Promise<void> => {
-  await delay(DELAY);
-  const matches = await getMatches();
-  const filtered = matches.filter((m) => m.id !== id);
-  localStorage.setItem(MATCHES_KEY, JSON.stringify(filtered));
+  const matches = storage.getMatches();
+  storage.setMatches(matches.filter((m) => m.id !== id));
 };
