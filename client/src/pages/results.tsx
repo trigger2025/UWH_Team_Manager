@@ -1,135 +1,241 @@
-import { useMatches, useDeleteMatch } from "@/hooks/use-matches";
-import { BottomNav } from "@/components/ui/bottom-nav";
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Trash2, CalendarDays, ChevronDown, ChevronUp } from "lucide-react";
-import { format } from "date-fns";
-import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
+import { useApp } from "@/context/AppContext";
+import { BottomNav } from "@/components/ui/bottom-nav";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { 
+  Trophy, 
+  History, 
+  Trash2, 
+  CheckCircle2, 
+  Timer,
+  LayoutGrid,
+  CalendarDays,
+  ChevronDown,
+  ChevronUp
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { format } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Match, Player } from "@shared/schema";
 
-// Type guard or manual typing because JSONB comes back as 'any' usually
-type TeamData = {
-  name: string;
-  color: string;
-  players: Player[];
-  avgRating: number;
-};
-
 export default function ResultsPage() {
-  const { data: matches, isLoading } = useMatches();
-  const deleteMutation = useDeleteMatch();
+  const { matchResults, completeMatch, deleteMatchResult } = useApp();
+  const [scoringMatchId, setScoringMatchId] = useState<number | null>(null);
+  const [blackScore, setBlackScore] = useState("");
+  const [whiteScore, setWhiteScore] = useState("");
+  const [isTournament, setIsTournament] = useState(false);
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading history...</div>;
+  const handleComplete = (id: number) => {
+    const b = parseInt(blackScore);
+    const w = parseInt(whiteScore);
+    if (isNaN(b) || isNaN(w)) return;
+
+    completeMatch(id, b, w, isTournament);
+    setScoringMatchId(null);
+    setBlackScore("");
+    setWhiteScore("");
+  };
 
   return (
-    <div className="min-h-screen bg-background pb-24 pt-6 px-4">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-2xl font-display mb-6">Match History</h1>
+    <div className="min-h-screen bg-background pb-24 px-4 pt-6">
+      <div className="max-w-md mx-auto space-y-6">
+        <div className="flex justify-between items-center mb-2">
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <History className="h-6 w-6 text-primary" />
+            Session History
+          </h1>
+          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+            {matchResults.length} Matches
+          </Badge>
+        </div>
 
-        <div className="space-y-4">
-          {matches?.length === 0 ? (
-            <div className="text-center py-12 opacity-50">
-              <HistoryEmptyState />
-              <p className="mt-4">No matches recorded yet.</p>
-            </div>
+        <AnimatePresence mode="popLayout">
+          {matchResults.length === 0 ? (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-20 border border-dashed border-border rounded-2xl bg-card/30"
+            >
+              <div className="bg-muted rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4">
+                <Timer className="h-8 w-8 opacity-20" />
+              </div>
+              <p className="text-muted-foreground">No matches recorded yet.</p>
+              <Button variant="link" onClick={() => window.location.href='/generate'}>
+                Generate a match
+              </Button>
+            </motion.div>
           ) : (
-            matches?.map((match) => (
-              <MatchHistoryCard 
-                key={match.id} 
-                match={match} 
-                onDelete={() => deleteMutation.mutate(match.id)}
-              />
+            matchResults.map((match) => (
+              <motion.div
+                key={match.id}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+              >
+                <MatchCard 
+                  match={match}
+                  isScoring={scoringMatchId === match.id}
+                  blackScore={blackScore}
+                  whiteScore={whiteScore}
+                  isTournament={isTournament}
+                  onScoreClick={() => setScoringMatchId(match.id)}
+                  onCancelScoring={() => setScoringMatchId(null)}
+                  onBlackScoreChange={setBlackScore}
+                  onWhiteScoreChange={setWhiteScore}
+                  onTournamentChange={setIsTournament}
+                  onComplete={() => handleComplete(match.id)}
+                  onDelete={() => deleteMatchResult(match.id)}
+                />
+              </motion.div>
             ))
           )}
-        </div>
+        </AnimatePresence>
       </div>
       <BottomNav />
     </div>
   );
 }
 
-function MatchHistoryCard({ match, onDelete }: { match: Match, onDelete: () => void }) {
+function MatchCard({ 
+  match, isScoring, blackScore, whiteScore, isTournament,
+  onScoreClick, onCancelScoring, onBlackScoreChange, onWhiteScoreChange, 
+  onTournamentChange, onComplete, onDelete 
+}: any) {
   const [isOpen, setIsOpen] = useState(false);
-  const teams = match.teams as unknown as [TeamData, TeamData]; // Cast JSONB
-  const date = new Date(match.date);
+  const teams = match.teams as any;
 
   return (
-    <Card className="bg-card border-white/5 overflow-hidden">
+    <Card className={`relative overflow-hidden border-border/50 ${match.completed ? 'bg-card/50' : 'bg-card shadow-lg ring-1 ring-primary/20'}`}>
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <div className="p-4 flex items-center justify-between">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 text-muted-foreground text-xs font-mono uppercase tracking-wider">
+        {match.completed && (
+          <div className={`absolute top-0 right-0 p-2 ${match.blackScore > match.whiteScore ? 'text-primary' : match.whiteScore > match.blackScore ? 'text-cyan-400' : 'text-muted-foreground'}`}>
+            <Trophy className="h-4 w-4" />
+          </div>
+        )}
+        
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
               <CalendarDays className="h-3 w-3" />
-              {format(date, "MMM d, h:mm a")}
+              {format(new Date(match.date), 'MMM d, h:mm a')}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex -space-x-2">
-                {teams[0].players.slice(0,3).map((p, i) => (
-                  <div key={i} className="h-6 w-6 rounded-full bg-slate-200 border-2 border-card z-10" />
-                ))}
-              </div>
-              <span className="text-sm font-medium text-foreground">vs</span>
-              <div className="flex -space-x-2">
-                {teams[1].players.slice(0,3).map((p, i) => (
-                  <div key={i} className="h-6 w-6 rounded-full bg-slate-800 border-2 border-card z-10" />
-                ))}
-              </div>
-            </div>
+            {!match.completed && (
+              <Badge className="bg-primary text-primary-foreground animate-pulse text-[10px]">Active</Badge>
+            )}
           </div>
+        </CardHeader>
 
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/5">
-              {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
-          </CollapsibleTrigger>
-        </div>
-
-        <CollapsibleContent>
-          <div className="px-4 pb-4 pt-0 border-t border-white/5 bg-black/20">
-            <div className="grid grid-cols-2 gap-4 py-3">
-              <div>
-                <h4 className="text-xs font-bold uppercase text-slate-400 mb-2">White Team</h4>
-                <ul className="text-sm space-y-1">
-                  {teams[0].players.map(p => (
-                    <li key={p.id} className="opacity-80">{p.name}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h4 className="text-xs font-bold uppercase text-slate-400 mb-2">Black Team</h4>
-                <ul className="text-sm space-y-1">
-                  {teams[1].players.map(p => (
-                    <li key={p.id} className="opacity-80">{p.name}</li>
-                  ))}
-                </ul>
+        <CardContent className="p-4 space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-1 text-center">
+              <div className="text-xs font-bold text-primary mb-1 uppercase tracking-tight">Black</div>
+              <div className="text-3xl font-display font-black">
+                {match.completed ? match.blackScore : '-'}
               </div>
             </div>
-            <div className="flex justify-end mt-2">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={onDelete}
-                className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 text-xs"
-              >
-                <Trash2 className="mr-2 h-3 w-3" /> Delete Record
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="px-3 py-1 rounded-full bg-muted text-[10px] font-bold text-muted-foreground hover:bg-muted/80">
+                VS {isOpen ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
               </Button>
+            </CollapsibleTrigger>
+            <div className="flex-1 text-center">
+              <div className="text-xs font-bold text-cyan-400 mb-1 uppercase tracking-tight">White</div>
+              <div className="text-3xl font-display font-black">
+                {match.completed ? match.whiteScore : '-'}
+              </div>
             </div>
           </div>
-        </CollapsibleContent>
+
+          <CollapsibleContent>
+            <div className="grid grid-cols-2 gap-4 py-2 border-t border-border/30 mt-2">
+              <div>
+                <h4 className="text-[10px] font-bold uppercase text-primary mb-2">Team Black</h4>
+                <ul className="text-xs space-y-1">
+                  {teams.black.players.map((p: any) => (
+                    <li key={p.id} className="opacity-80 flex justify-between">
+                      <span>{p.name}</span>
+                      <span className="text-[8px] opacity-50">{p.assignedPosition}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-[10px] font-bold uppercase text-cyan-400 mb-2">Team White</h4>
+                <ul className="text-xs space-y-1">
+                  {teams.white.players.map((p: any) => (
+                    <li key={p.id} className="opacity-80 flex justify-between">
+                      <span>{p.name}</span>
+                      <span className="text-[8px] opacity-50">{p.assignedPosition}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </CollapsibleContent>
+
+          {!match.completed ? (
+            isScoring ? (
+              <div className="space-y-4 pt-2 animate-in slide-in-from-top-2 duration-300">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Black Score</Label>
+                    <Input 
+                      type="number" 
+                      value={blackScore} 
+                      onChange={(e) => onBlackScoreChange(e.target.value)}
+                      className="text-center font-bold text-lg h-12"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">White Score</Label>
+                    <Input 
+                      type="number" 
+                      value={whiteScore} 
+                      onChange={(e) => onWhiteScoreChange(e.target.value)}
+                      className="text-center font-bold text-lg h-12"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 pb-2">
+                  <Checkbox 
+                    id={`tournament-${match.id}`} 
+                    checked={isTournament}
+                    onCheckedChange={(checked) => onTournamentChange(!!checked)}
+                  />
+                  <Label htmlFor={`tournament-${match.id}`} className="text-xs text-muted-foreground">Tournament Mode (70% rating impact)</Label>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1 h-10" onClick={onCancelScoring}>Cancel</Button>
+                  <Button className="flex-1 h-10" onClick={onComplete}>Submit Result</Button>
+                </div>
+              </div>
+            ) : (
+              <Button className="w-full h-11 gap-2 rounded-xl" onClick={onScoreClick}>
+                <CheckCircle2 className="h-4 w-4" />
+                Enter Final Score
+              </Button>
+            )
+          ) : (
+            <div className="flex justify-between items-center pt-2 border-t border-border/30">
+               <div className="flex gap-1">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/50 hover:text-destructive" onClick={onDelete}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                <LayoutGrid className="h-3 w-3" />
+                Formation: {match.formation}
+              </div>
+            </div>
+          )}
+        </CardContent>
       </Collapsible>
     </Card>
-  );
-}
-
-function HistoryEmptyState() {
-  return (
-    <svg 
-      className="w-16 h-16 mx-auto text-muted-foreground/30" 
-      fill="none" viewBox="0 0 24 24" stroke="currentColor"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
   );
 }
