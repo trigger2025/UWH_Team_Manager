@@ -1,16 +1,25 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+
+import PlayersPage from "@/pages/players";
+import GeneratePage from "@/pages/generate";
+import ResultsPage from "@/pages/results";
+import { StatsPage, RotationPage, SettingsPage } from "@/pages/placeholders";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
-      {/* Add pages below */}
-      {/* <Route path="/" component={Home}/> */}
-      {/* Fallback to 404 */}
+      <Route path="/" component={() => <Redirect to="/players" />} />
+      <Route path="/players" component={PlayersPage} />
+      <Route path="/generate" component={GeneratePage} />
+      <Route path="/results" component={ResultsPage} />
+      <Route path="/stats" component={StatsPage} />
+      <Route path="/rotation" component={RotationPage} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );
