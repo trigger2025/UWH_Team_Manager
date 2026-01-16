@@ -6,6 +6,7 @@ export const STORAGE_KEYS = {
   ADMIN_SETTINGS: "uwh_admin_settings",
   POOL_ROTATION_HISTORY: "uwh_pool_rotation_history",
   PRESET_TEAMS: "uwh_preset_teams",
+  SAVED_TAGS: "uwh_saved_tags",
 } as const;
 
 export interface AppData {
@@ -14,6 +15,7 @@ export interface AppData {
   adminSettings: AdminSettings[];
   poolRotationHistory: PoolRotationEntry[];
   presetTeams: PresetTeam[];
+  savedTags: string[];
 }
 
 const generateId = () => Math.floor(Math.random() * 1000000);
@@ -39,12 +41,21 @@ export const storage = {
   },
 
   loadAllData(): AppData {
+    const rawPlayers = this.read<any[]>(STORAGE_KEYS.PLAYERS, []);
+    const migratedPlayers: Player[] = rawPlayers.map(p => ({
+      ...p,
+      rating: typeof p.rating === 'number' ? Math.round(Math.min(Math.max(p.rating <= 10 ? p.rating * 100 : p.rating, 0), 1000)) : 500,
+      weakHandEnabled: p.weakHandEnabled ?? false,
+      weakHandRating: p.weakHandEnabled ? (typeof p.weakHandRating === 'number' ? Math.round(Math.min(Math.max(p.weakHandRating <= 10 ? p.weakHandRating * 100 : p.weakHandRating, 0), 1000)) : 300) : null,
+    }));
+    
     return {
-      players: this.read<Player[]>(STORAGE_KEYS.PLAYERS, []),
+      players: migratedPlayers,
       matchResults: this.read<Match[]>(STORAGE_KEYS.MATCH_RESULTS, []),
       adminSettings: this.read<AdminSettings[]>(STORAGE_KEYS.ADMIN_SETTINGS, []),
       poolRotationHistory: this.read<PoolRotationEntry[]>(STORAGE_KEYS.POOL_ROTATION_HISTORY, []),
       presetTeams: this.read<PresetTeam[]>(STORAGE_KEYS.PRESET_TEAMS, []),
+      savedTags: this.read<string[]>(STORAGE_KEYS.SAVED_TAGS, []),
     };
   },
 
@@ -54,6 +65,7 @@ export const storage = {
     if (data.adminSettings) this.write(STORAGE_KEYS.ADMIN_SETTINGS, data.adminSettings);
     if (data.poolRotationHistory) this.write(STORAGE_KEYS.POOL_ROTATION_HISTORY, data.poolRotationHistory);
     if (data.presetTeams) this.write(STORAGE_KEYS.PRESET_TEAMS, data.presetTeams);
+    if (data.savedTags !== undefined) this.write(STORAGE_KEYS.SAVED_TAGS, data.savedTags);
   },
 
   clearAllData(): void {
@@ -90,8 +102,9 @@ export const createPlayer = async (player: InsertPlayer): Promise<Player> => {
   const newPlayer: Player = {
     ...player,
     id: generateId(),
-    rating: player.rating ?? 5.0,
-    weakHandRating: player.weakHandRating ?? 3.0,
+    rating: player.rating ?? 500,
+    weakHandEnabled: player.weakHandEnabled ?? false,
+    weakHandRating: player.weakHandEnabled ? (player.weakHandRating ?? 300) : null,
     formationPreferences: player.formationPreferences ?? {},
     tags: player.tags ?? [],
     ratingHistory: player.ratingHistory ?? [],

@@ -24,12 +24,16 @@ export type FormationPosition = FormationPosition33 | FormationPosition132;
 export const players = pgTable("players", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  rating: doublePrecision("rating").notNull().default(5.0),
-  weakHandRating: doublePrecision("weak_hand_rating").notNull().default(3.0),
+  rating: integer("rating").notNull().default(500),
+  
+  // Weak hand is optional
+  weakHandEnabled: boolean("weak_hand_enabled").notNull().default(false),
+  weakHandRating: integer("weak_hand_rating"),
   
   // Stores { [FormationType]: { main: FormationPosition, alternates: FormationPosition[] } }
   formationPreferences: jsonb("formation_preferences").notNull().default({}),
   
+  // Player's custom tags
   tags: text("tags").array().notNull().default([]),
   
   // Stores array of { date: string, rating: number }
@@ -101,7 +105,7 @@ export interface GeneratedTeam {
 export interface PlayerRatingSnapshot {
   playerId: number;
   rating: number;
-  weakHandRating: number;
+  weakHandRating: number | null;
   timestamp: string;
 }
 

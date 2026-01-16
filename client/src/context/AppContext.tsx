@@ -1,7 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, FormationType, FormationPosition } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam } from "@shared/schema";
 import { storage, AppData } from "@/lib/storage";
 import { calculateRatingAdjustments, applyRatingAdjustments } from "@/lib/rating-logic";
+
+const normalizeTag = (tag: string): string => tag.trim().toLowerCase();
+const formatTag = (tag: string): string => {
+  const trimmed = tag.trim();
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+};
+
+const getUsedTags = (players: Player[]): Set<string> => {
+  const used = new Set<string>();
+  players.forEach(p => {
+    (p.tags || []).forEach(t => used.add(normalizeTag(t)));
+  });
+  return used;
+};
 
 interface AppState extends AppData {
   addPlayer: (player: any) => void;
@@ -25,13 +39,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [state]);
 
   const addPlayer = useCallback((playerData: any) => {
+    const normalizedTags = (playerData.tags || []).map(formatTag);
+    
     const newPlayer: Player = {
       ...playerData,
       id: Math.floor(Math.random() * 1000000),
       rating: playerData.rating ?? 500,
-      weakHandRating: playerData.weakHandRating ?? 300,
+      weakHandEnabled: playerData.weakHandEnabled ?? false,
+      weakHandRating: playerData.weakHandEnabled ? (playerData.weakHandRating ?? 300) : null,
       formationPreferences: playerData.formationPreferences ?? {},
-      tags: playerData.tags ?? [],
+      tags: normalizedTags,
       ratingHistory: [],
       wins: 0,
       losses: 0,
@@ -39,21 +56,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       active: true,
       createdAt: new Date(),
     };
-    setState(prev => ({ ...prev, players: [...prev.players, newPlayer] }));
+
+    setState(prev => {
+      const newPlayers = [...prev.players, newPlayer];
+      const existingNormalized = prev.savedTags.map(normalizeTag);
+      const tagsToAdd = normalizedTags.filter((t: string) => !existingNormalized.includes(normalizeTag(t)));
+      
+      return { 
+        ...prev, 
+        players: newPlayers,
+        savedTags: [...prev.savedTags, ...tagsToAdd]
+      };
+    });
   }, []);
 
   const updatePlayer = useCallback((id: number, updates: Partial<Player>) => {
-    setState(prev => ({
-      ...prev,
-      players: prev.players.map(p => p.id === id ? { ...p, ...updates } : p)
-    }));
+    setState(prev => {
+      const normalizedUpdateTags = updates.tags ? updates.tags.map(formatTag) : undefined;
+      
+      const updatedPlayers = prev.players.map(p => {
+        if (p.id !== id) return p;
+        const updated = { ...p, ...updates };
+        if (normalizedUpdateTags) {
+          updated.tags = normalizedUpdateTags;
+        }
+        if (updates.weakHandEnabled === false) {
+          updated.weakHandRating = null;
+        }
+        return updated;
+      });
+
+      const usedTags = getUsedTags(updatedPlayers);
+      const cleanedSavedTags = prev.savedTags.filter(t => usedTags.has(normalizeTag(t)));
+      
+      const newTagsToAdd = normalizedUpdateTags 
+        ? normalizedUpdateTags.filter((t: string) => !cleanedSavedTags.some(st => normalizeTag(st) === normalizeTag(t)))
+        : [];
+
+      return {
+        ...prev,
+        players: updatedPlayers,
+        savedTags: [...cleanedSavedTags, ...newTagsToAdd]
+      };
+    });
   }, []);
 
   const deletePlayer = useCallback((id: number) => {
-    setState(prev => ({
-      ...prev,
-      players: prev.players.filter(p => p.id !== id)
-    }));
+    setState(prev => {
+      const newPlayers = prev.players.filter(p => p.id !== id);
+      const usedTags = getUsedTags(newPlayers);
+      const cleanedSavedTags = prev.savedTags.filter(t => usedTags.has(normalizeTag(t)));
+
+      return {
+        ...prev,
+        players: newPlayers,
+        savedTags: cleanedSavedTags
+      };
+    });
   }, []);
 
   const saveMatchResult = useCallback((resultData: any) => {
@@ -71,7 +130,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const teams = match.teams as any;
       const kFactorSetting = prev.adminSettings.find(s => s.key === "rating_strength");
-      const kFactor = kFactorSetting ? parseInt(kFactorSetting.value) : 32;
+      const kFactor = kFactorSetting ? parseInt(kFactorSetting.value as string) : 32;
 
       const adjustments = calculateRatingAdjustments(
         teams.black,
@@ -122,7 +181,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const recalculatePlayerStatsFromResults = useCallback(() => {
     setState(prev => {
-      // 1. Reset all players to base state
       const basePlayers = prev.players.map(p => ({
         ...p,
         rating: 500,
@@ -133,15 +191,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
 
       const kFactorSetting = prev.adminSettings.find(s => s.key === "rating_strength");
-      const kFactor = kFactorSetting ? parseInt(kFactorSetting.value) : 32;
+      const kFactor = kFactorSetting ? parseInt(kFactorSetting.value as string) : 32;
 
-      // 2. Sort matches chronologically
       const sortedMatches = [...prev.matchResults]
         .filter(m => m.completed)
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-      // 3. Re-apply each match
-      let currentPlayers = basePlayers;
+      let currentPlayers = basePlayers as Player[];
       sortedMatches.forEach(match => {
         const teams = match.teams as any;
         const adjustments = calculateRatingAdjustments(
@@ -150,7 +206,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           match.blackScore!,
           match.whiteScore!,
           kFactor,
-          false // Recalculation assumes stored state or default
+          false
         );
 
         currentPlayers = applyRatingAdjustments(

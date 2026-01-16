@@ -119,10 +119,12 @@ export default function PlayersPage() {
                       
                       {/* Stats Badges */}
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full border border-white/5">
-                          <HandMetal className="h-2.5 w-2.5" />
-                          {player.weakHandRating.toFixed(1)}
-                        </div>
+                        {player.weakHandEnabled && player.weakHandRating !== null && (
+                          <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full border border-white/5">
+                            <HandMetal className="h-2.5 w-2.5" />
+                            {player.weakHandRating}
+                          </div>
+                        )}
                         {player.tags.slice(0, 2).map(tag => (
                           <div key={tag} className="flex items-center gap-1 text-[10px] font-bold text-cyan-400 bg-cyan-400/5 px-2 py-0.5 rounded-full border border-cyan-400/10">
                             <Tag className="h-2.5 w-2.5" />
