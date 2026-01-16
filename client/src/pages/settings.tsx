@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Input } from "@/components/ui/input";
 import { 
   Settings, 
   RefreshCw, 
@@ -24,12 +25,30 @@ export default function SettingsPage() {
   } = useApp();
   const { toast } = useToast();
 
-  const kFactor = parseInt(adminSettings.find(s => s.key === "rating_strength")?.value || "32");
+  const currentKFactor = parseInt(adminSettings.find(s => s.key === "rating_strength")?.value || "32");
+  const [kFactorInput, setKFactorInput] = useState(currentKFactor.toString());
 
-  const handleKFactorChange = (value: number[]) => {
+  useEffect(() => {
+    setKFactorInput(currentKFactor.toString());
+  }, [currentKFactor]);
+
+  const updateKFactor = (val: number) => {
+    const clamped = Math.min(Math.max(val, 0), 1000);
     const newSettings = adminSettings.filter(s => s.key !== "rating_strength");
-    newSettings.push({ key: "rating_strength", value: value[0].toString() });
+    newSettings.push({ key: "rating_strength", value: clamped.toString() });
     updateAdminSettings(newSettings);
+  };
+
+  const handleSliderChange = (value: number[]) => {
+    updateKFactor(value[0]);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setKFactorInput(e.target.value);
+    const val = parseInt(e.target.value);
+    if (!isNaN(val)) {
+      updateKFactor(val);
+    }
   };
 
   const handleRecalculate = () => {
@@ -68,18 +87,27 @@ export default function SettingsPage() {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <Label className="text-xs text-muted-foreground">K-Factor (Current: {kFactor})</Label>
-                <span className="text-xs font-mono font-bold text-primary">{kFactor}</span>
+                <Label className="text-xs text-muted-foreground">K-Factor (Strength)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={kFactorInput}
+                    onChange={handleInputChange}
+                    className="w-20 h-8 text-right font-mono font-bold text-primary"
+                    min={0}
+                    max={1000}
+                  />
+                </div>
               </div>
               <Slider 
-                value={[kFactor]} 
-                min={1} 
-                max={100} 
-                step={1} 
-                onValueChange={handleKFactorChange}
+                value={[currentKFactor]} 
+                min={0} 
+                max={1000} 
+                step={10} 
+                onValueChange={handleSliderChange}
               />
               <p className="text-[10px] text-muted-foreground leading-relaxed">
-                Higher values make ratings change more quickly after each game. Standard Elo uses 32.
+                Higher values make ratings change more quickly after each game. Range: 0 (no change) to 1000.
               </p>
             </div>
           </CardContent>

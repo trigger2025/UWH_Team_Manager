@@ -28,8 +28,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newPlayer: Player = {
       ...playerData,
       id: Math.floor(Math.random() * 1000000),
-      rating: playerData.rating ?? 5.0,
-      weakHandRating: playerData.weakHandRating ?? 3.0,
+      rating: playerData.rating ?? 500,
+      weakHandRating: playerData.weakHandRating ?? 300,
       formationPreferences: playerData.formationPreferences ?? {},
       tags: playerData.tags ?? [],
       ratingHistory: [],
@@ -125,7 +125,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // 1. Reset all players to base state
       const basePlayers = prev.players.map(p => ({
         ...p,
-        rating: 5.0,
+        rating: 500,
         wins: 0,
         losses: 0,
         draws: 0,

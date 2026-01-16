@@ -97,7 +97,7 @@ export function applyRatingAdjustments(
       else if (blackWin) lost = true;
     }
 
-    const newRating = Math.min(Math.max(player.rating + adj.change, 1), 10);
+    const newRating = Math.min(Math.max(player.rating + adj.change, 0), 1000);
     
     return {
       ...player,
