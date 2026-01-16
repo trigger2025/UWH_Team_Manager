@@ -35,6 +35,16 @@ Preferred communication style: Simple, everyday language.
 - **Tags**: Global savedTags system with autocomplete suggestions; tags are normalized to title-case and deduplicated case-insensitively; unused tags auto-removed when players are updated/deleted
 - **Formation Preferences**: Per-formation position preferences (3-3 and 1-3-2 formations have separate, distinct positions)
 
+## Team Generation System
+- **Generation Workspace**: Persistent state across navigation (mode, formation, selected players, off-hand toggle, generated teams, history)
+- **Formation Positions**: 3-3 uses Forward, Centre, Half Back, Centre Back; 1-3-2 uses Forward, Wing, Centre, Back
+- **Off-hand Support**: Toggle enables using weakHandRating instead of primary rating for team generation
+- **Explicit Selection**: Players must be explicitly selected before generation (none selected by default)
+- **History**: Last 10 generated team states with Older/Newer navigation for rollback
+- **Manual Editing**: Move players between teams without automatic rebalancing or role reassignment
+- **Match Snapshots**: Confirm creates MatchTeamSnapshot with rating snapshots (ratingUsed, usedOffHand, team, position) for each player
+- **Modes**: Standard mode implemented; Two Pools, Preset Teams, Tournament modes are placeholders
+
 ## Key Design Patterns
 - **Mobile-First**: Bottom navigation bar, touch-optimized UI
 - **Offline-First**: All data stored locally, no network dependency for core features
