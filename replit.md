@@ -36,14 +36,23 @@ Preferred communication style: Simple, everyday language.
 - **Formation Preferences**: Per-formation position preferences (3-3 and 1-3-2 formations have separate, distinct positions)
 
 ## Team Generation System
-- **Generation Workspace**: Persistent state across navigation (mode, formation, selected players, off-hand toggle, generated teams, history)
+- **Generation Workspace**: Persistent state across navigation (mode, formation, selected players, off-hand toggle, generated teams, pool assignments, history)
 - **Formation Positions**: 3-3 uses Forward, Centre, Half Back, Centre Back; 1-3-2 uses Forward, Wing, Centre, Back
 - **Off-hand Support**: Toggle enables using weakHandRating instead of primary rating for team generation
 - **Explicit Selection**: Players must be explicitly selected before generation (none selected by default)
 - **History**: Last 10 generated team states with Older/Newer navigation for rollback
 - **Manual Editing**: Move players between teams without automatic rebalancing or role reassignment
 - **Match Snapshots**: Confirm creates MatchTeamSnapshot with rating snapshots (ratingUsed, usedOffHand, team, position) for each player
-- **Modes**: Standard mode implemented; Two Pools, Preset Teams, Tournament modes are placeholders
+- **Modes**: Standard mode and Two Pools mode implemented; Preset Teams and Tournament modes are placeholders
+
+## Two Pools Mode
+- **Pool Assignment**: Each selected player must be assigned to Pool A or Pool B before generation
+- **Assignment UI**: A/B toggle buttons appear next to selected players (amber for Pool A, violet for Pool B)
+- **Validation**: Generation blocked until all selected players are assigned; warnings shown for odd/insufficient player counts per pool
+- **Generation**: Separate Black vs White teams generated for each pool independently
+- **Confirm All**: Creates separate match records for Pool A and Pool B with slight timestamp offset for proper sorting
+- **Pool Assignments Map**: Stored in workspace as `poolAssignments: Record<number, PoolAssignment>` where PoolAssignment is "A" | "B"
+- **twoPoolsTeams**: Stores `{ poolA: StandardGeneratedTeams | null, poolB: StandardGeneratedTeams | null }`
 
 ## Key Design Patterns
 - **Mobile-First**: Bottom navigation bar, touch-optimized UI
