@@ -1,0 +1,85 @@
+Revise the Team Generation system to function as a persistent workspace
+that supports multiple generation modes and manual control.
+
+Apply the following changes without affecting Player Management or existing data.
+
+1) Generation Modes
+- Introduce a Generation Mode selector with these options:
+  - Standard (1 pool, generated teams)
+  - Two Pools
+  - Preset Teams
+  - Tournament
+- Default mode is Standard.
+- Do not hard-code assumptions like “always 2 teams” or “always 1 pool”.
+
+2) Preset Teams (Structural Support)
+- Allow users to manually define one or more preset teams.
+- Preset teams:
+  - Bypass generation for their own composition.
+  - Still require the system to generate fair opposing teams.
+- Support preset teams in:
+  - 1 pool
+  - 2 pools (user selects which pool preset teams belong to)
+  - Tournament mode (pool assignment automatic).
+- Remaining players must be distributed as evenly as possible.
+
+3) Positions & Formations
+- Only allow positions defined by the selected formation:
+  - 3-3: Forward, Centre, Half Back, Centre Back
+  - 1-3-2: Forward, Wing, Centre, Back
+- Do not generate Left/Right or derived positions.
+- Formation selection must be visible and used by generation logic.
+- Default formation is 3-3.
+
+4) Player Selection
+- No players selected by default.
+- Users must explicitly select attending players per session.
+- Ignore any “active” flags during generation.
+
+5) Off-hand Rating Usage
+- Add a toggle: “Use off-hand ratings when available”.
+- When enabled:
+  - Use weakHandRating only if weakHandEnabled is true.
+  - Record which rating (main or off-hand) was used per player.
+- When disabled:
+  - Ignore off-hand ratings entirely.
+
+6) Workspace Persistence
+- Generated teams must persist across navigation.
+- Store generated teams in global state, not local component state.
+- Generated teams must not be overwritten unless the user explicitly regenerates.
+
+7) Generated Teams History
+- Maintain a bounded history (e.g. last 10) of generated team states.
+- Allow reloading a previous generated state.
+- Re-roll and Generate both create new history entries.
+- Manual edits modify the current state only.
+
+8) Manual Editing
+- Allow users to manually move players:
+  - Between teams
+  - Between pools
+- Manual changes must not auto-rebalance or regenerate teams.
+- Team averages must update live.
+
+9) Generate / Re-roll / Confirm Semantics
+- Generate and Re-roll must never create match results.
+- Confirm Teams must:
+  - Lock the current generated state
+  - Navigate to the Results screen
+  - Only allow saving match results there.
+
+10) Match Result Snapshots
+- When match results are saved, store a snapshot of:
+  - Player ID and name
+  - Rating used (main or off-hand)
+  - Rating value at generation time
+  - Off-hand rating if used
+  - Rating change applied
+- Rating adjustments must apply to the same rating that was used.
+
+11) UI Feedback
+- All interactive controls must have visible pressed or active states.
+- Users must be able to clearly tell when actions occur.
+
+Stop after implementing this. Do not add new features beyond this scope.

@@ -7,6 +7,7 @@ import { z } from "zod";
 export const FormationType = z.enum(["3-3", "1-3-2"]);
 export type FormationType = z.infer<typeof FormationType>;
 
+// Canonical positions for each formation (as per user requirements)
 export const FormationPosition33 = z.enum([
   "Forward", "Centre", "Half Back", "Centre Back"
 ]);
@@ -18,6 +19,10 @@ export type FormationPosition33 = z.infer<typeof FormationPosition33>;
 export type FormationPosition132 = z.infer<typeof FormationPosition132>;
 
 export type FormationPosition = FormationPosition33 | FormationPosition132;
+
+// Generation modes
+export const GenerationMode = z.enum(["standard", "two_pools", "preset_teams", "tournament"]);
+export type GenerationMode = z.infer<typeof GenerationMode>;
 
 // --- Core Models ---
 
@@ -90,9 +95,13 @@ export const adminSettings = pgTable("admin_settings", {
 
 // --- Complex Types (Not stored directly in DB or used as wrappers) ---
 
+// Player with assigned formation role during team generation
 export interface PlayerWithAssignedFormationRole extends Player {
   assignedPosition: FormationPosition;
   formationRole: "main" | "alternate" | "filler";
+  // Rating snapshot at generation time
+  ratingUsed: number;
+  usedOffHand: boolean;
 }
 
 export interface GeneratedTeam {
@@ -102,10 +111,32 @@ export interface GeneratedTeam {
   totalRating: number;
 }
 
+// Snapshot stored when match result is confirmed
 export interface PlayerRatingSnapshot {
   playerId: number;
-  rating: number;
-  weakHandRating: number | null;
+  playerName: string;
+  ratingUsed: number;
+  usedOffHand: boolean;
+  mainRating: number;
+  offHandRating: number | null;
+  ratingChange?: number;
+  team: "Black" | "White";
+  position: string;
+}
+
+// Stored with match when teams are confirmed
+export interface MatchTeamSnapshot {
+  black: {
+    players: PlayerRatingSnapshot[];
+    totalRating: number;
+    formation: FormationType;
+  };
+  white: {
+    players: PlayerRatingSnapshot[];
+    totalRating: number;
+    formation: FormationType;
+  };
+  useOffHandRatings: boolean;
   timestamp: string;
 }
 
@@ -117,9 +148,31 @@ export interface PoolRotationEntry {
 }
 
 export interface PresetTeam {
+  id: number;
   name: string;
   playerIds: number[];
   preferredFormation?: FormationType;
+  poolAssignment?: number; // For two pools mode
+}
+
+// Generation workspace state (persisted globally)
+export interface GenerationWorkspace {
+  mode: GenerationMode;
+  formation: FormationType;
+  selectedPlayerIds: number[];
+  useOffHandRatings: boolean;
+  generatedTeams: { black: GeneratedTeam; white: GeneratedTeam } | null;
+  history: GeneratedTeamsSnapshot[];
+  historyIndex: number; // Current position in history (-1 = none)
+}
+
+export interface GeneratedTeamsSnapshot {
+  id: number;
+  timestamp: string;
+  teams: { black: GeneratedTeam; white: GeneratedTeam };
+  mode: GenerationMode;
+  formation: FormationType;
+  useOffHandRatings: boolean;
 }
 
 // --- Zod Schemas & Types ---

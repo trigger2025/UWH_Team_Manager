@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam } from "@shared/schema";
-import { storage, AppData } from "@/lib/storage";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode } from "@shared/schema";
+import { storage, AppData, DEFAULT_GENERATION_WORKSPACE } from "@/lib/storage";
 import { calculateRatingAdjustments, applyRatingAdjustments } from "@/lib/rating-logic";
+
+const MAX_HISTORY_SIZE = 10;
 
 const normalizeTag = (tag: string): string => tag.trim().toLowerCase();
 
@@ -26,6 +28,16 @@ interface AppState extends AppData {
   recalculatePlayerStatsFromResults: () => void;
   deleteTag: (tag: string) => boolean;
   isTagInUse: (tag: string) => boolean;
+  // Workspace functions
+  updateWorkspace: (updates: Partial<GenerationWorkspace>) => void;
+  setGeneratedTeams: (teams: { black: GeneratedTeam; white: GeneratedTeam } | null) => void;
+  addToHistory: (teams: { black: GeneratedTeam; white: GeneratedTeam }) => void;
+  restoreFromHistory: (index: number) => void;
+  clearWorkspace: () => void;
+  // Preset team functions
+  addPresetTeam: (team: Omit<PresetTeam, "id">) => void;
+  updatePresetTeam: (id: number, updates: Partial<PresetTeam>) => void;
+  deletePresetTeam: (id: number) => void;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -272,6 +284,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
+  // --- Workspace Management ---
+
+  const updateWorkspace = useCallback((updates: Partial<GenerationWorkspace>) => {
+    setState(prev => ({
+      ...prev,
+      generationWorkspace: {
+        ...prev.generationWorkspace,
+        ...updates
+      }
+    }));
+  }, []);
+
+  const setGeneratedTeams = useCallback((teams: { black: GeneratedTeam; white: GeneratedTeam } | null) => {
+    setState(prev => ({
+      ...prev,
+      generationWorkspace: {
+        ...prev.generationWorkspace,
+        generatedTeams: teams
+      }
+    }));
+  }, []);
+
+  const addToHistory = useCallback((teams: { black: GeneratedTeam; white: GeneratedTeam }) => {
+    setState(prev => {
+      const snapshot: GeneratedTeamsSnapshot = {
+        id: Math.floor(Math.random() * 1000000),
+        timestamp: new Date().toISOString(),
+        teams: {
+          black: { ...teams.black, players: teams.black.players.map(p => ({ ...p })) },
+          white: { ...teams.white, players: teams.white.players.map(p => ({ ...p })) }
+        },
+        mode: prev.generationWorkspace.mode,
+        formation: prev.generationWorkspace.formation,
+        useOffHandRatings: prev.generationWorkspace.useOffHandRatings
+      };
+
+      const newHistory = [snapshot, ...prev.generationWorkspace.history].slice(0, MAX_HISTORY_SIZE);
+
+      return {
+        ...prev,
+        generationWorkspace: {
+          ...prev.generationWorkspace,
+          generatedTeams: teams,
+          history: newHistory,
+          historyIndex: 0
+        }
+      };
+    });
+  }, []);
+
+  const restoreFromHistory = useCallback((index: number) => {
+    setState(prev => {
+      const snapshot = prev.generationWorkspace.history[index];
+      if (!snapshot) return prev;
+
+      return {
+        ...prev,
+        generationWorkspace: {
+          ...prev.generationWorkspace,
+          generatedTeams: snapshot.teams,
+          formation: snapshot.formation,
+          useOffHandRatings: snapshot.useOffHandRatings,
+          historyIndex: index
+        }
+      };
+    });
+  }, []);
+
+  const clearWorkspace = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      generationWorkspace: { ...DEFAULT_GENERATION_WORKSPACE }
+    }));
+  }, []);
+
+  // --- Preset Team Management ---
+
+  const addPresetTeam = useCallback((team: Omit<PresetTeam, "id">) => {
+    const newTeam: PresetTeam = {
+      ...team,
+      id: Math.floor(Math.random() * 1000000)
+    };
+    setState(prev => ({
+      ...prev,
+      presetTeams: [...prev.presetTeams, newTeam]
+    }));
+  }, []);
+
+  const updatePresetTeam = useCallback((id: number, updates: Partial<PresetTeam>) => {
+    setState(prev => ({
+      ...prev,
+      presetTeams: prev.presetTeams.map(t => 
+        t.id === id ? { ...t, ...updates } : t
+      )
+    }));
+  }, []);
+
+  const deletePresetTeam = useCallback((id: number) => {
+    setState(prev => ({
+      ...prev,
+      presetTeams: prev.presetTeams.filter(t => t.id !== id)
+    }));
+  }, []);
+
   return (
     <AppContext.Provider value={{
       ...state,
@@ -286,7 +402,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateAdminSetting,
       recalculatePlayerStatsFromResults,
       deleteTag,
-      isTagInUse
+      isTagInUse,
+      updateWorkspace,
+      setGeneratedTeams,
+      addToHistory,
+      restoreFromHistory,
+      clearWorkspace,
+      addPresetTeam,
+      updatePresetTeam,
+      deletePresetTeam
     }}>
       {children}
     </AppContext.Provider>

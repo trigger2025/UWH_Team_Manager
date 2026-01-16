@@ -1,4 +1,4 @@
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, InsertPlayer } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, InsertPlayer, GenerationWorkspace, GeneratedTeamsSnapshot } from "@shared/schema";
 
 export const STORAGE_KEYS = {
   PLAYERS: "uwh_players",
@@ -7,7 +7,18 @@ export const STORAGE_KEYS = {
   POOL_ROTATION_HISTORY: "uwh_pool_rotation_history",
   PRESET_TEAMS: "uwh_preset_teams",
   SAVED_TAGS: "uwh_saved_tags",
+  GENERATION_WORKSPACE: "uwh_generation_workspace",
 } as const;
+
+export const DEFAULT_GENERATION_WORKSPACE: GenerationWorkspace = {
+  mode: "standard",
+  formation: "3-3",
+  selectedPlayerIds: [],
+  useOffHandRatings: false,
+  generatedTeams: null,
+  history: [],
+  historyIndex: -1
+};
 
 export interface AppData {
   players: Player[];
@@ -16,6 +27,7 @@ export interface AppData {
   poolRotationHistory: PoolRotationEntry[];
   presetTeams: PresetTeam[];
   savedTags: string[];
+  generationWorkspace: GenerationWorkspace;
 }
 
 const generateId = () => Math.floor(Math.random() * 1000000);
@@ -49,6 +61,14 @@ export const storage = {
       weakHandRating: p.weakHandEnabled ? (typeof p.weakHandRating === 'number' ? Math.round(Math.min(Math.max(p.weakHandRating <= 10 ? p.weakHandRating * 100 : p.weakHandRating, 0), 1000)) : 300) : null,
     }));
     
+    const savedWorkspace = this.read<Partial<GenerationWorkspace> | null>(STORAGE_KEYS.GENERATION_WORKSPACE, null);
+    
+    // Merge saved workspace with defaults to ensure all fields exist
+    const mergedWorkspace: GenerationWorkspace = {
+      ...DEFAULT_GENERATION_WORKSPACE,
+      ...(savedWorkspace || {})
+    };
+    
     return {
       players: migratedPlayers,
       matchResults: this.read<Match[]>(STORAGE_KEYS.MATCH_RESULTS, []),
@@ -56,6 +76,7 @@ export const storage = {
       poolRotationHistory: this.read<PoolRotationEntry[]>(STORAGE_KEYS.POOL_ROTATION_HISTORY, []),
       presetTeams: this.read<PresetTeam[]>(STORAGE_KEYS.PRESET_TEAMS, []),
       savedTags: this.read<string[]>(STORAGE_KEYS.SAVED_TAGS, []),
+      generationWorkspace: mergedWorkspace,
     };
   },
 
@@ -66,6 +87,7 @@ export const storage = {
     if (data.poolRotationHistory) this.write(STORAGE_KEYS.POOL_ROTATION_HISTORY, data.poolRotationHistory);
     if (data.presetTeams) this.write(STORAGE_KEYS.PRESET_TEAMS, data.presetTeams);
     if (data.savedTags !== undefined) this.write(STORAGE_KEYS.SAVED_TAGS, data.savedTags);
+    if (data.generationWorkspace) this.write(STORAGE_KEYS.GENERATION_WORKSPACE, data.generationWorkspace);
   },
 
   clearAllData(): void {

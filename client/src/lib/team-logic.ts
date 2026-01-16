@@ -1,43 +1,42 @@
-import { Player, FormationType, FormationPosition, GeneratedTeam, PlayerWithAssignedFormationRole } from "@shared/schema";
+import { Player, FormationType, FormationPosition, GeneratedTeam, PlayerWithAssignedFormationRole, MatchTeamSnapshot, PlayerRatingSnapshot } from "@shared/schema";
 
 /**
- * Required roles for each supported formation
+ * Canonical roles for each supported formation (matching schema positions exactly)
+ * 3-3: Forward, Centre, Half Back, Centre Back (6 players)
+ * 1-3-2: Forward, Wing, Centre, Back (6 players, Wing used twice)
  */
 export const FORMATION_ROLES: Record<FormationType, FormationPosition[]> = {
   "3-3": [
-    "Left Wing", "Center Forward", "Right Wing",
-    "Left Back", "Full Back", "Right Back"
+    "Forward", "Forward", "Forward",
+    "Half Back", "Centre Back", "Half Back"
   ],
   "1-3-2": [
-    "Goalie",
-    "Left Mid", "Center Mid", "Right Mid",
-    "Left Back", "Right Back"
-  ],
-  "2-3-1": [
-    "Left Back", "Right Back",
-    "Left Mid", "Center Mid", "Right Mid",
-    "Goalie"
-  ],
-  "3-2-1": [
-    "Left Wing", "Center Forward", "Right Wing",
-    "Center Mid", "Goalie", "Full Back"
-  ],
-  "2-2-2": [
-    "Left Wing", "Right Wing",
-    "Left Mid", "Right Mid",
-    "Left Back", "Right Back"
+    "Forward",
+    "Wing", "Centre", "Wing",
+    "Back", "Back"
   ]
 };
 
 /**
+ * Gets the effective rating for a player based on off-hand setting
+ */
+export function getEffectiveRating(player: Player, useOffHand: boolean): { rating: number; usedOffHand: boolean } {
+  if (useOffHand && player.weakHandEnabled && player.weakHandRating !== null) {
+    return { rating: player.weakHandRating, usedOffHand: true };
+  }
+  return { rating: player.rating, usedOffHand: false };
+}
+
+/**
  * Validates if a group of players can fill the required roles for a formation
  */
-export function validateFormation(players: Player[], formation: FormationType): { valid: boolean; missingPositions: FormationPosition[] } {
+export function validateFormation(players: Player[], formation: FormationType): { valid: boolean; minPlayers: number } {
   const requiredRoles = FORMATION_ROLES[formation];
-  if (players.length < requiredRoles.length) {
-    return { valid: false, missingPositions: [] }; // Not enough players
-  }
-  return { valid: true, missingPositions: [] };
+  const minPlayers = requiredRoles.length;
+  return { 
+    valid: players.length >= minPlayers, 
+    minPlayers 
+  };
 }
 
 /**
@@ -45,23 +44,34 @@ export function validateFormation(players: Player[], formation: FormationType): 
  */
 export function assignFormationRoles(
   players: Player[], 
-  formation: FormationType
+  formation: FormationType,
+  useOffHand: boolean = false
 ): PlayerWithAssignedFormationRole[] {
   const roles = [...FORMATION_ROLES[formation]];
-  const unassignedPlayers = [...players].sort((a, b) => b.rating - a.rating);
   const assignedPlayers: PlayerWithAssignedFormationRole[] = [];
+  const unassignedPlayers = [...players];
 
-  // 1. Try to assign main positions
+  // Sort by effective rating descending
+  unassignedPlayers.sort((a, b) => {
+    const aRating = getEffectiveRating(a, useOffHand).rating;
+    const bRating = getEffectiveRating(b, useOffHand).rating;
+    return bRating - aRating;
+  });
+
+  // 1. Try to assign main position preferences
   const stillUnassigned: Player[] = [];
   for (const player of unassignedPlayers) {
     const pref = (player.formationPreferences as any)?.[formation];
     const roleIndex = roles.indexOf(pref?.main);
     
     if (pref?.main && roleIndex !== -1) {
+      const { rating, usedOffHand } = getEffectiveRating(player, useOffHand);
       assignedPlayers.push({
         ...player,
         assignedPosition: pref.main as FormationPosition,
-        formationRole: "main"
+        formationRole: "main",
+        ratingUsed: rating,
+        usedOffHand
       });
       roles.splice(roleIndex, 1);
     } else {
@@ -69,17 +79,20 @@ export function assignFormationRoles(
     }
   }
 
-  // 2. Try to assign alternate positions
+  // 2. Try to assign alternate position preferences
   const finalUnassigned: Player[] = [];
   for (const player of stillUnassigned) {
     const pref = (player.formationPreferences as any)?.[formation];
     const altRole = pref?.alternates?.find((alt: string) => roles.includes(alt as FormationPosition));
     
     if (altRole) {
+      const { rating, usedOffHand } = getEffectiveRating(player, useOffHand);
       assignedPlayers.push({
         ...player,
         assignedPosition: altRole as FormationPosition,
-        formationRole: "alternate"
+        formationRole: "alternate",
+        ratingUsed: rating,
+        usedOffHand
       });
       roles.splice(roles.indexOf(altRole as FormationPosition), 1);
     } else {
@@ -90,10 +103,13 @@ export function assignFormationRoles(
   // 3. Fill remaining roles by best fit (rating order)
   for (const player of finalUnassigned) {
     if (roles.length > 0) {
+      const { rating, usedOffHand } = getEffectiveRating(player, useOffHand);
       assignedPlayers.push({
         ...player,
         assignedPosition: roles.shift()!,
-        formationRole: "filler"
+        formationRole: "filler",
+        ratingUsed: rating,
+        usedOffHand
       });
     }
   }
@@ -101,15 +117,26 @@ export function assignFormationRoles(
   return assignedPlayers;
 }
 
+export interface GenerateTeamsOptions {
+  useOffHand: boolean;
+}
+
 /**
  * Generates two balanced teams using a snake-draft approach with post-generation balancing
  */
 export function generateTeams(
   availablePlayers: Player[], 
-  teamFormationMap: { black: FormationType; white: FormationType }
+  teamFormationMap: { black: FormationType; white: FormationType },
+  options: GenerateTeamsOptions = { useOffHand: false }
 ): { black: GeneratedTeam; white: GeneratedTeam } {
-  // Sort players by rating descending
-  const sortedPlayers = [...availablePlayers].sort((a, b) => b.rating - a.rating);
+  const { useOffHand } = options;
+  
+  // Sort players by effective rating descending
+  const sortedPlayers = [...availablePlayers].sort((a, b) => {
+    const aRating = getEffectiveRating(a, useOffHand).rating;
+    const bRating = getEffectiveRating(b, useOffHand).rating;
+    return bRating - aRating;
+  });
   
   const blackPlayers: Player[] = [];
   const whitePlayers: Player[] = [];
@@ -129,7 +156,7 @@ export function generateTeams(
   });
 
   // Post-generation balancing (simple swap if imbalance is high)
-  const getRating = (team: Player[]) => team.reduce((sum, p) => sum + p.rating, 0);
+  const getRating = (team: Player[]) => team.reduce((sum, p) => getEffectiveRating(p, useOffHand).rating + sum, 0);
   
   let bRating = getRating(blackPlayers);
   let wRating = getRating(whitePlayers);
@@ -139,12 +166,14 @@ export function generateTeams(
     const diff = bRating - wRating;
     if (Math.abs(diff) < 0.5) break;
 
-    let bestSwap = null;
+    let bestSwap: { b: number; w: number } | null = null;
     let maxImprovement = 0;
 
     for (let b = 0; b < blackPlayers.length; b++) {
       for (let w = 0; w < whitePlayers.length; w++) {
-        const swapDiff = (blackPlayers[b].rating - whitePlayers[w].rating) * 2;
+        const bPlayerRating = getEffectiveRating(blackPlayers[b], useOffHand).rating;
+        const wPlayerRating = getEffectiveRating(whitePlayers[w], useOffHand).rating;
+        const swapDiff = (bPlayerRating - wPlayerRating) * 2;
         const newDiff = diff - swapDiff;
         const improvement = Math.abs(diff) - Math.abs(newDiff);
 
@@ -164,18 +193,21 @@ export function generateTeams(
     } else break;
   }
 
+  const blackAssigned = assignFormationRoles(blackPlayers, teamFormationMap.black, useOffHand);
+  const whiteAssigned = assignFormationRoles(whitePlayers, teamFormationMap.white, useOffHand);
+
   return {
     black: {
       color: "Black",
       formation: teamFormationMap.black,
-      players: assignFormationRoles(blackPlayers, teamFormationMap.black),
-      totalRating: bRating
+      players: blackAssigned,
+      totalRating: blackAssigned.reduce((sum, p) => sum + p.ratingUsed, 0)
     },
     white: {
       color: "White",
       formation: teamFormationMap.white,
-      players: assignFormationRoles(whitePlayers, teamFormationMap.white),
-      totalRating: wRating
+      players: whiteAssigned,
+      totalRating: whiteAssigned.reduce((sum, p) => sum + p.ratingUsed, 0)
     }
   };
 }
@@ -185,30 +217,105 @@ export function generateTeams(
  */
 export function reJigTeams(
   existingTeams: { black: GeneratedTeam; white: GeneratedTeam },
-  lockedPlayerIds: number[]
+  lockedPlayerIds: number[],
+  options: GenerateTeamsOptions = { useOffHand: false }
 ): { black: GeneratedTeam; white: GeneratedTeam } {
   const allPlayers = [
     ...existingTeams.black.players,
     ...existingTeams.white.players
   ];
 
-  const lockedPlayers = allPlayers.filter(p => lockedPlayerIds.includes(p.id));
-  const unlockedPlayers = allPlayers.filter(p => !lockedPlayerIds.includes(p.id));
-
   // For this simple version, we'll just re-generate from scratch including all players
-  // A more advanced version would keep locked players in their specific teams
   return generateTeams(allPlayers, {
     black: existingTeams.black.formation,
     white: existingTeams.white.formation
-  });
+  }, options);
 }
 
 /**
- * Applies a preset team configuration to a list of available players
+ * Moves a player from one team to another without rebalancing
+ * Updates total ratings live but keeps player positions as-is
  */
-export function applyPresetTeam(
-  preset: { playerIds: number[] }, 
-  allPlayers: Player[]
-): Player[] {
-  return allPlayers.filter(p => preset.playerIds.includes(p.id));
+export function movePlayerBetweenTeams(
+  teams: { black: GeneratedTeam; white: GeneratedTeam },
+  playerId: number,
+  toTeam: "Black" | "White"
+): { black: GeneratedTeam; white: GeneratedTeam } {
+  const sourceKey = toTeam === "Black" ? "white" : "black";
+  const targetKey = toTeam === "Black" ? "black" : "white";
+  
+  const playerIndex = teams[sourceKey].players.findIndex(p => p.id === playerId);
+  if (playerIndex === -1) return teams;
+  
+  // Clone to avoid mutation
+  const newTeams = {
+    black: { ...teams.black, players: [...teams.black.players.map(p => ({ ...p }))] },
+    white: { ...teams.white, players: [...teams.white.players.map(p => ({ ...p }))] }
+  };
+  
+  const [player] = newTeams[sourceKey].players.splice(playerIndex, 1);
+  newTeams[targetKey].players.push(player);
+  
+  // Recalculate totals
+  newTeams[sourceKey].totalRating = newTeams[sourceKey].players.reduce((sum, p) => sum + p.ratingUsed, 0);
+  newTeams[targetKey].totalRating = newTeams[targetKey].players.reduce((sum, p) => sum + p.ratingUsed, 0);
+  
+  return newTeams;
+}
+
+/**
+ * Creates a deep copy of teams for history
+ */
+export function cloneTeams(teams: { black: GeneratedTeam; white: GeneratedTeam }): { black: GeneratedTeam; white: GeneratedTeam } {
+  return {
+    black: {
+      ...teams.black,
+      players: teams.black.players.map(p => ({ ...p }))
+    },
+    white: {
+      ...teams.white,
+      players: teams.white.players.map(p => ({ ...p }))
+    }
+  };
+}
+
+/**
+ * Creates a snapshot of teams for match result storage
+ * Captures the rating used at generation time for each player
+ */
+export function createMatchTeamSnapshot(
+  teams: { black: GeneratedTeam; white: GeneratedTeam },
+  players: Player[],
+  useOffHandRatings: boolean
+): MatchTeamSnapshot {
+  const createPlayerSnapshots = (team: GeneratedTeam, teamColor: "Black" | "White"): PlayerRatingSnapshot[] => {
+    return team.players.map(p => {
+      const originalPlayer = players.find(pl => pl.id === p.id);
+      return {
+        playerId: p.id,
+        playerName: p.name,
+        ratingUsed: p.ratingUsed,
+        usedOffHand: p.usedOffHand,
+        mainRating: originalPlayer?.rating ?? p.rating,
+        offHandRating: originalPlayer?.weakHandRating ?? null,
+        team: teamColor,
+        position: p.assignedPosition
+      };
+    });
+  };
+
+  return {
+    black: {
+      players: createPlayerSnapshots(teams.black, "Black"),
+      totalRating: teams.black.totalRating,
+      formation: teams.black.formation
+    },
+    white: {
+      players: createPlayerSnapshots(teams.white, "White"),
+      totalRating: teams.white.totalRating,
+      formation: teams.white.formation
+    },
+    useOffHandRatings,
+    timestamp: new Date().toISOString()
+  };
 }

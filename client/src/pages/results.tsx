@@ -178,10 +178,10 @@ function MatchCard({
               <div>
                 <h4 className="text-[10px] font-bold uppercase text-primary mb-2">Team Black</h4>
                 <ul className="text-xs space-y-1">
-                  {teams.black.players.map((p: any) => (
-                    <li key={p.id} className="opacity-80 flex justify-between">
-                      <span>{p.name}</span>
-                      <span className="text-[8px] opacity-50">{p.assignedPosition}</span>
+                  {teams.black.players.map((p: any, idx: number) => (
+                    <li key={p.playerId ?? p.id ?? idx} className="opacity-80 flex justify-between">
+                      <span>{p.playerName ?? p.name}</span>
+                      <span className="text-[8px] opacity-50">{p.position ?? p.assignedPosition}</span>
                     </li>
                   ))}
                 </ul>
@@ -189,10 +189,10 @@ function MatchCard({
               <div>
                 <h4 className="text-[10px] font-bold uppercase text-cyan-400 mb-2">Team White</h4>
                 <ul className="text-xs space-y-1">
-                  {teams.white.players.map((p: any) => (
-                    <li key={p.id} className="opacity-80 flex justify-between">
-                      <span>{p.name}</span>
-                      <span className="text-[8px] opacity-50">{p.assignedPosition}</span>
+                  {teams.white.players.map((p: any, idx: number) => (
+                    <li key={p.playerId ?? p.id ?? idx} className="opacity-80 flex justify-between">
+                      <span>{p.playerName ?? p.name}</span>
+                      <span className="text-[8px] opacity-50">{p.position ?? p.assignedPosition}</span>
                     </li>
                   ))}
                 </ul>
