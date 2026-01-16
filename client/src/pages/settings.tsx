@@ -6,48 +6,57 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { 
   Settings, 
   RefreshCw, 
   Trash2, 
   ShieldAlert,
   Zap,
-  RotateCcw
+  RotateCcw,
+  Tag,
+  X,
+  AlertCircle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function SettingsPage() {
   const { 
     adminSettings, 
-    updateAdminSettings, 
+    updateAdminSetting, 
     resetAllPlayerStats, 
-    recalculatePlayerStatsFromResults 
+    recalculatePlayerStatsFromResults,
+    savedTags,
+    deleteTag,
+    isTagInUse
   } = useApp();
   const { toast } = useToast();
 
-  const currentKFactor = parseInt(adminSettings.find(s => s.key === "rating_strength")?.value || "32");
+  const kFactorSetting = adminSettings.find(s => s.key === "rating_strength");
+  const currentKFactor = kFactorSetting ? parseInt(kFactorSetting.value as string) : 32;
   const [kFactorInput, setKFactorInput] = useState(currentKFactor.toString());
 
   useEffect(() => {
     setKFactorInput(currentKFactor.toString());
   }, [currentKFactor]);
 
-  const updateKFactor = (val: number) => {
-    const clamped = Math.min(Math.max(val, 0), 1000);
-    const newSettings = adminSettings.filter(s => s.key !== "rating_strength");
-    newSettings.push({ key: "rating_strength", value: clamped.toString() });
-    updateAdminSettings(newSettings);
-  };
-
   const handleSliderChange = (value: number[]) => {
-    updateKFactor(value[0]);
+    const clamped = Math.min(Math.max(value[0], 0), 100);
+    updateAdminSetting("rating_strength", clamped.toString());
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setKFactorInput(e.target.value);
-    const val = parseInt(e.target.value);
+  };
+
+  const handleInputBlur = () => {
+    const val = parseInt(kFactorInput);
     if (!isNaN(val)) {
-      updateKFactor(val);
+      const clamped = Math.min(Math.max(val, 0), 100);
+      updateAdminSetting("rating_strength", clamped.toString());
+      setKFactorInput(clamped.toString());
+    } else {
+      setKFactorInput(currentKFactor.toString());
     }
   };
 
@@ -65,6 +74,25 @@ export default function SettingsPage() {
       toast({
         title: "Stats Reset",
         description: "All player statistics have been cleared.",
+      });
+    }
+  };
+
+  const handleDeleteTag = (tag: string) => {
+    if (isTagInUse(tag)) {
+      toast({
+        title: "Cannot Delete Tag",
+        description: `"${tag}" is currently in use by one or more players.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const success = deleteTag(tag);
+    if (success) {
+      toast({
+        title: "Tag Deleted",
+        description: `"${tag}" has been removed from saved tags.`,
       });
     }
   };
@@ -93,22 +121,73 @@ export default function SettingsPage() {
                     type="number"
                     value={kFactorInput}
                     onChange={handleInputChange}
-                    className="w-20 h-8 text-right font-mono font-bold text-primary"
+                    onBlur={handleInputBlur}
+                    className="w-20 text-right font-mono font-bold text-primary"
                     min={0}
-                    max={1000}
+                    max={100}
+                    data-testid="input-k-factor"
                   />
                 </div>
               </div>
               <Slider 
                 value={[currentKFactor]} 
                 min={0} 
-                max={1000} 
-                step={10} 
+                max={100} 
+                step={1} 
                 onValueChange={handleSliderChange}
+                data-testid="slider-k-factor"
               />
               <p className="text-[10px] text-muted-foreground leading-relaxed">
-                Higher values make ratings change more quickly after each game. Range: 0 (no change) to 1000.
+                Higher values make ratings change more quickly after each game. Range: 0 (no change) to 100.
               </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Tag className="h-4 w-4 text-cyan-500" />
+              Tag Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {savedTags.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No tags saved yet. Tags are created when you add them to players.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {savedTags.map(tag => {
+                  const inUse = isTagInUse(tag);
+                  return (
+                    <Badge 
+                      key={tag} 
+                      variant={inUse ? "secondary" : "outline"}
+                      className="flex items-center gap-1.5 pr-1"
+                      data-testid={`tag-item-${tag}`}
+                    >
+                      {tag}
+                      <button
+                        onClick={() => handleDeleteTag(tag)}
+                        className={`ml-1 p-0.5 rounded-full transition-colors ${
+                          inUse 
+                            ? 'text-muted-foreground/50 cursor-not-allowed' 
+                            : 'hover:bg-destructive/20 hover:text-destructive'
+                        }`}
+                        disabled={inUse}
+                        data-testid={`button-delete-tag-${tag}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex items-start gap-2 pt-2 text-[10px] text-muted-foreground">
+              <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+              <span>Tags in use by players cannot be deleted. Remove them from all players first.</span>
             </div>
           </CardContent>
         </Card>
@@ -125,6 +204,7 @@ export default function SettingsPage() {
               variant="outline" 
               className="w-full justify-start gap-2 h-11"
               onClick={handleRecalculate}
+              data-testid="button-recalculate-ratings"
             >
               <RotateCcw className="h-4 w-4" />
               Recalculate Ratings
@@ -138,6 +218,7 @@ export default function SettingsPage() {
                 variant="ghost" 
                 className="w-full justify-start gap-2 h-11 text-destructive hover:bg-destructive/10"
                 onClick={handleReset}
+                data-testid="button-reset-stats"
               >
                 <Trash2 className="h-4 w-4" />
                 Reset Player Stats

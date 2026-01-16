@@ -4,10 +4,6 @@ import { storage, AppData } from "@/lib/storage";
 import { calculateRatingAdjustments, applyRatingAdjustments } from "@/lib/rating-logic";
 
 const normalizeTag = (tag: string): string => tag.trim().toLowerCase();
-const formatTag = (tag: string): string => {
-  const trimmed = tag.trim();
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-};
 
 const getUsedTags = (players: Player[]): Set<string> => {
   const used = new Set<string>();
@@ -26,7 +22,10 @@ interface AppState extends AppData {
   deleteMatchResult: (id: number) => void;
   resetAllPlayerStats: () => void;
   updateAdminSettings: (settings: AdminSettings[]) => void;
+  updateAdminSetting: (key: string, value: string) => void;
   recalculatePlayerStatsFromResults: () => void;
+  deleteTag: (tag: string) => boolean;
+  isTagInUse: (tag: string) => boolean;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -39,7 +38,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [state]);
 
   const addPlayer = useCallback((playerData: any) => {
-    const normalizedTags = (playerData.tags || []).map(formatTag);
+    const playerTags = (playerData.tags || []).map((t: string) => t.trim());
     
     const newPlayer: Player = {
       ...playerData,
@@ -48,7 +47,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       weakHandEnabled: playerData.weakHandEnabled ?? false,
       weakHandRating: playerData.weakHandEnabled ? (playerData.weakHandRating ?? 300) : null,
       formationPreferences: playerData.formationPreferences ?? {},
-      tags: normalizedTags,
+      tags: playerTags,
       ratingHistory: [],
       wins: 0,
       losses: 0,
@@ -60,7 +59,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setState(prev => {
       const newPlayers = [...prev.players, newPlayer];
       const existingNormalized = prev.savedTags.map(normalizeTag);
-      const tagsToAdd = normalizedTags.filter((t: string) => !existingNormalized.includes(normalizeTag(t)));
+      const tagsToAdd = playerTags.filter((t: string) => !existingNormalized.includes(normalizeTag(t)));
       
       return { 
         ...prev, 
@@ -72,13 +71,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updatePlayer = useCallback((id: number, updates: Partial<Player>) => {
     setState(prev => {
-      const normalizedUpdateTags = updates.tags ? updates.tags.map(formatTag) : undefined;
+      const updateTags = updates.tags ? updates.tags.map((t: string) => t.trim()) : undefined;
       
       const updatedPlayers = prev.players.map(p => {
         if (p.id !== id) return p;
         const updated = { ...p, ...updates };
-        if (normalizedUpdateTags) {
-          updated.tags = normalizedUpdateTags;
+        if (updateTags) {
+          updated.tags = updateTags;
         }
         if (updates.weakHandEnabled === false) {
           updated.weakHandRating = null;
@@ -89,8 +88,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const usedTags = getUsedTags(updatedPlayers);
       const cleanedSavedTags = prev.savedTags.filter(t => usedTags.has(normalizeTag(t)));
       
-      const newTagsToAdd = normalizedUpdateTags 
-        ? normalizedUpdateTags.filter((t: string) => !cleanedSavedTags.some(st => normalizeTag(st) === normalizeTag(t)))
+      const newTagsToAdd = updateTags 
+        ? updateTags.filter((t: string) => !cleanedSavedTags.some(st => normalizeTag(st) === normalizeTag(t)))
         : [];
 
       return {
@@ -179,6 +178,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setState(prev => ({ ...prev, adminSettings: settings }));
   }, []);
 
+  const updateAdminSetting = useCallback((key: string, value: string) => {
+    setState(prev => {
+      const existing = prev.adminSettings.find(s => s.key === key);
+      if (existing) {
+        return {
+          ...prev,
+          adminSettings: prev.adminSettings.map(s => 
+            s.key === key ? { ...s, value } : s
+          )
+        };
+      } else {
+        const newSetting: AdminSettings = {
+          id: Math.floor(Math.random() * 1000000),
+          key,
+          value
+        };
+        return {
+          ...prev,
+          adminSettings: [...prev.adminSettings, newSetting]
+        };
+      }
+    });
+  }, []);
+
+  const isTagInUse = useCallback((tag: string): boolean => {
+    const normalizedTag = normalizeTag(tag);
+    return state.players.some(p => 
+      (p.tags || []).some(t => normalizeTag(t) === normalizedTag)
+    );
+  }, [state.players]);
+
+  const deleteTag = useCallback((tag: string): boolean => {
+    const normalizedTag = normalizeTag(tag);
+    const inUse = state.players.some(p => 
+      (p.tags || []).some(t => normalizeTag(t) === normalizedTag)
+    );
+    
+    if (inUse) {
+      return false;
+    }
+    
+    setState(prev => ({
+      ...prev,
+      savedTags: prev.savedTags.filter(t => normalizeTag(t) !== normalizedTag)
+    }));
+    return true;
+  }, [state.players]);
+
   const recalculatePlayerStatsFromResults = useCallback(() => {
     setState(prev => {
       const basePlayers = prev.players.map(p => ({
@@ -236,7 +283,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deleteMatchResult,
       resetAllPlayerStats,
       updateAdminSettings,
-      recalculatePlayerStatsFromResults
+      updateAdminSetting,
+      recalculatePlayerStatsFromResults,
+      deleteTag,
+      isTagInUse
     }}>
       {children}
     </AppContext.Provider>

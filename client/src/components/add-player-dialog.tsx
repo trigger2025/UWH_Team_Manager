@@ -110,8 +110,7 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
     const currentTags = form.getValues("tags") || [];
     const normalizedCurrent = currentTags.map(normalizeTag);
     if (!normalizedCurrent.includes(normalizeTag(tag))) {
-      const formatted = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
-      form.setValue("tags", [...currentTags, formatted]);
+      form.setValue("tags", [...currentTags, tag]);
     }
     setTagInput("");
   };
