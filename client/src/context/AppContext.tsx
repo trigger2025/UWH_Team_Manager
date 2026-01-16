@@ -70,12 +70,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!match || match.completed) return prev;
 
       const teams = match.teams as any;
+      const kFactorSetting = prev.adminSettings.find(s => s.key === "rating_strength");
+      const kFactor = kFactorSetting ? parseInt(kFactorSetting.value) : 32;
+
       const adjustments = calculateRatingAdjustments(
         teams.black,
         teams.white,
         blackScore,
         whiteScore,
-        32,
+        kFactor,
         tournamentMode
       );
 
@@ -118,8 +121,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const recalculatePlayerStatsFromResults = useCallback(() => {
-    // This would re-run all match results in chronological order to build final ratings/stats
-    // For now, it's a placeholder to satisfy the interface
+    setState(prev => {
+      // 1. Reset all players to base state
+      const basePlayers = prev.players.map(p => ({
+        ...p,
+        rating: 5.0,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        ratingHistory: []
+      }));
+
+      const kFactorSetting = prev.adminSettings.find(s => s.key === "rating_strength");
+      const kFactor = kFactorSetting ? parseInt(kFactorSetting.value) : 32;
+
+      // 2. Sort matches chronologically
+      const sortedMatches = [...prev.matchResults]
+        .filter(m => m.completed)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // 3. Re-apply each match
+      let currentPlayers = basePlayers;
+      sortedMatches.forEach(match => {
+        const teams = match.teams as any;
+        const adjustments = calculateRatingAdjustments(
+          teams.black,
+          teams.white,
+          match.blackScore!,
+          match.whiteScore!,
+          kFactor,
+          false // Recalculation assumes stored state or default
+        );
+
+        currentPlayers = applyRatingAdjustments(
+          currentPlayers,
+          adjustments,
+          match.blackScore! > match.whiteScore!,
+          match.whiteScore! > match.blackScore!,
+          match.blackScore === match.whiteScore
+        );
+      });
+
+      return {
+        ...prev,
+        players: currentPlayers
+      };
+    });
   }, []);
 
   return (
