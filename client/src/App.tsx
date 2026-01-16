@@ -8,7 +8,8 @@ import { AppProvider } from "@/context/AppContext";
 import PlayersPage from "@/pages/players";
 import GeneratePage from "@/pages/generate";
 import ResultsPage from "@/pages/results";
-import { StatsPage, RotationPage, SettingsPage } from "@/pages/placeholders";
+import SettingsPage from "@/pages/settings";
+import { StatsPage, RotationPage } from "@/pages/placeholders";
 import NotFound from "@/pages/not-found";
 
 function Router() {

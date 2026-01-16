@@ -41,6 +41,18 @@ export default function ResultsPage() {
     setWhiteScore("");
   };
 
+  const matches = [...matchResults].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  
+  // Group matches by session (same day within 4 hours)
+  const sessions: { [key: string]: Match[] } = {};
+  matches.forEach(match => {
+    const date = new Date(match.date);
+    const sessionKey = format(date, 'yyyy-MM-dd');
+    // For simplicity, we'll group by day for now
+    if (!sessions[sessionKey]) sessions[sessionKey] = [];
+    sessions[sessionKey].push(match);
+  });
+
   return (
     <div className="min-h-screen bg-background pb-24 px-4 pt-6">
       <div className="max-w-md mx-auto space-y-6">
@@ -70,29 +82,38 @@ export default function ResultsPage() {
               </Button>
             </motion.div>
           ) : (
-            matchResults.map((match) => (
-              <motion.div
-                key={match.id}
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-              >
-                <MatchCard 
-                  match={match}
-                  isScoring={scoringMatchId === match.id}
-                  blackScore={blackScore}
-                  whiteScore={whiteScore}
-                  isTournament={isTournament}
-                  onScoreClick={() => setScoringMatchId(match.id)}
-                  onCancelScoring={() => setScoringMatchId(null)}
-                  onBlackScoreChange={setBlackScore}
-                  onWhiteScoreChange={setWhiteScore}
-                  onTournamentChange={setIsTournament}
-                  onComplete={() => handleComplete(match.id)}
-                  onDelete={() => deleteMatchResult(match.id)}
-                />
-              </motion.div>
+            Object.entries(sessions).map(([date, sessionMatches]) => (
+              <div key={date} className="space-y-3">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/50 px-1 flex items-center gap-2">
+                  <div className="h-px flex-1 bg-border/30" />
+                  {format(new Date(date), 'EEEE, MMMM do')}
+                  <div className="h-px flex-1 bg-border/30" />
+                </h3>
+                {sessionMatches.map((match) => (
+                  <motion.div
+                    key={match.id}
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                  >
+                    <MatchCard 
+                      match={match}
+                      isScoring={scoringMatchId === match.id}
+                      blackScore={blackScore}
+                      whiteScore={whiteScore}
+                      isTournament={isTournament}
+                      onScoreClick={() => setScoringMatchId(match.id)}
+                      onCancelScoring={() => setScoringMatchId(null)}
+                      onBlackScoreChange={setBlackScore}
+                      onWhiteScoreChange={setWhiteScore}
+                      onTournamentChange={setIsTournament}
+                      onComplete={() => handleComplete(match.id)}
+                      onDelete={() => deleteMatchResult(match.id)}
+                    />
+                  </motion.div>
+                ))}
+              </div>
             ))
           )}
         </AnimatePresence>
