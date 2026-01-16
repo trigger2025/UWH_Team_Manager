@@ -24,6 +24,10 @@ export type FormationPosition = FormationPosition33 | FormationPosition132;
 export const GenerationMode = z.enum(["standard", "two_pools", "preset_teams", "tournament"]);
 export type GenerationMode = z.infer<typeof GenerationMode>;
 
+// Pool assignment for Two Pools mode
+export const PoolAssignment = z.enum(["A", "B"]);
+export type PoolAssignment = z.infer<typeof PoolAssignment>;
+
 // --- Core Models ---
 
 export const players = pgTable("players", {
@@ -155,6 +159,12 @@ export interface PresetTeam {
   poolAssignment?: number; // For two pools mode
 }
 
+// Generated teams for two pools mode
+export interface TwoPoolsGeneratedTeams {
+  poolA: { black: GeneratedTeam; white: GeneratedTeam } | null;
+  poolB: { black: GeneratedTeam; white: GeneratedTeam } | null;
+}
+
 // Generation workspace state (persisted globally)
 export interface GenerationWorkspace {
   mode: GenerationMode;
@@ -162,6 +172,9 @@ export interface GenerationWorkspace {
   selectedPlayerIds: number[];
   useOffHandRatings: boolean;
   generatedTeams: { black: GeneratedTeam; white: GeneratedTeam } | null;
+  // Two pools mode specific
+  poolAssignments: Record<number, PoolAssignment>; // playerId -> pool
+  twoPoolsTeams: TwoPoolsGeneratedTeams | null;
   history: GeneratedTeamsSnapshot[];
   historyIndex: number; // Current position in history (-1 = none)
 }

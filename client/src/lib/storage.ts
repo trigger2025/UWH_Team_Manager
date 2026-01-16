@@ -16,6 +16,8 @@ export const DEFAULT_GENERATION_WORKSPACE: GenerationWorkspace = {
   selectedPlayerIds: [],
   useOffHandRatings: false,
   generatedTeams: null,
+  poolAssignments: {},
+  twoPoolsTeams: null,
   history: [],
   historyIndex: -1
 };

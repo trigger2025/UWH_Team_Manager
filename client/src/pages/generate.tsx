@@ -22,7 +22,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GeneratedTeam, FormationType, GenerationMode, PlayerWithAssignedFormationRole } from "@shared/schema";
+import { GeneratedTeam, FormationType, GenerationMode, PlayerWithAssignedFormationRole, PoolAssignment, TwoPoolsGeneratedTeams } from "@shared/schema";
 import { useLocation } from "wouter";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
@@ -55,6 +55,8 @@ export default function GeneratePage() {
     selectedPlayerIds, 
     useOffHandRatings, 
     generatedTeams,
+    poolAssignments,
+    twoPoolsTeams,
     history,
     historyIndex
   } = generationWorkspace;
@@ -77,16 +79,88 @@ export default function GeneratePage() {
     updateWorkspace({ selectedPlayerIds: [] });
   };
 
-  const handleGenerate = () => {
-    const selectedPlayers = players.filter(p => selectedPlayerIds.includes(p.id));
-    if (selectedPlayers.length < 2) return;
+  // Pool assignment functions for Two Pools mode
+  const setPlayerPool = (playerId: number, pool: PoolAssignment | null) => {
+    const newAssignments = { ...poolAssignments };
+    if (pool === null) {
+      delete newAssignments[playerId];
+    } else {
+      newAssignments[playerId] = pool;
+    }
+    updateWorkspace({ poolAssignments: newAssignments });
+  };
 
-    const result = generateTeams(
-      selectedPlayers, 
-      { black: formation, white: formation },
-      { useOffHand: useOffHandRatings }
-    );
-    addToHistory(result);
+  const assignAllToPool = (pool: PoolAssignment) => {
+    const newAssignments: Record<number, PoolAssignment> = {};
+    selectedPlayerIds.forEach(id => {
+      newAssignments[id] = pool;
+    });
+    updateWorkspace({ poolAssignments: newAssignments });
+  };
+
+  const clearPoolAssignments = () => {
+    updateWorkspace({ poolAssignments: {} });
+  };
+
+  // Calculate pool stats for Two Pools mode
+  const poolAPlayers = selectedPlayerIds.filter(id => poolAssignments[id] === "A");
+  const poolBPlayers = selectedPlayerIds.filter(id => poolAssignments[id] === "B");
+  const unassignedPlayers = selectedPlayerIds.filter(id => !poolAssignments[id]);
+  
+  const poolAWarning = poolAPlayers.length > 0 && poolAPlayers.length < 2 
+    ? "Need at least 2 players" 
+    : poolAPlayers.length % 2 !== 0 
+    ? "Odd number of players" 
+    : null;
+    
+  const poolBWarning = poolBPlayers.length > 0 && poolBPlayers.length < 2 
+    ? "Need at least 2 players" 
+    : poolBPlayers.length % 2 !== 0 
+    ? "Odd number of players" 
+    : null;
+
+  const handleGenerate = () => {
+    if (mode === "two_pools") {
+      // Generate teams for each pool separately
+      if (unassignedPlayers.length > 0) return; // Block if any unassigned
+      
+      const poolAPlayerObjs = players.filter(p => poolAssignments[p.id] === "A");
+      const poolBPlayerObjs = players.filter(p => poolAssignments[p.id] === "B");
+      
+      let poolATeams: { black: GeneratedTeam; white: GeneratedTeam } | null = null;
+      let poolBTeams: { black: GeneratedTeam; white: GeneratedTeam } | null = null;
+      
+      if (poolAPlayerObjs.length >= 2) {
+        poolATeams = generateTeams(
+          poolAPlayerObjs,
+          { black: formation, white: formation },
+          { useOffHand: useOffHandRatings }
+        );
+      }
+      
+      if (poolBPlayerObjs.length >= 2) {
+        poolBTeams = generateTeams(
+          poolBPlayerObjs,
+          { black: formation, white: formation },
+          { useOffHand: useOffHandRatings }
+        );
+      }
+      
+      updateWorkspace({ 
+        twoPoolsTeams: { poolA: poolATeams, poolB: poolBTeams }
+      });
+    } else {
+      // Standard mode
+      const selectedPlayers = players.filter(p => selectedPlayerIds.includes(p.id));
+      if (selectedPlayers.length < 2) return;
+
+      const result = generateTeams(
+        selectedPlayers, 
+        { black: formation, white: formation },
+        { useOffHand: useOffHandRatings }
+      );
+      addToHistory(result);
+    }
   };
 
   const handleReroll = () => {
@@ -129,12 +203,66 @@ export default function GeneratePage() {
     navigate("/results");
   };
 
+  const handleConfirmTwoPools = () => {
+    if (!twoPoolsTeams) return;
+    
+    const now = new Date();
+    
+    // Create and save matches for each pool with teams
+    if (twoPoolsTeams.poolA) {
+      const snapshotA = createMatchTeamSnapshot(twoPoolsTeams.poolA, players, useOffHandRatings);
+      saveMatchResult({
+        date: now,
+        teams: snapshotA,
+        completed: false,
+        poolId: null,
+        formation: formation,
+        blackScore: null,
+        whiteScore: null,
+        tournamentId: null,
+      });
+    }
+    
+    if (twoPoolsTeams.poolB) {
+      const snapshotB = createMatchTeamSnapshot(twoPoolsTeams.poolB, players, useOffHandRatings);
+      saveMatchResult({
+        date: new Date(now.getTime() + 1), // Slight offset so they sort correctly
+        teams: snapshotB,
+        completed: false,
+        poolId: null,
+        formation: formation,
+        blackScore: null,
+        whiteScore: null,
+        tournamentId: null,
+      });
+    }
+    
+    // Clear workspace
+    updateWorkspace({ twoPoolsTeams: null, poolAssignments: {} });
+    
+    // Navigate to results
+    navigate("/results");
+  };
+
   const handleClearTeams = () => {
     updateWorkspace({ generatedTeams: null });
   };
 
-  const canGenerate = selectedPlayerIds.length >= 2;
   const positionCount = FORMATION_ROLES[formation].length;
+  
+  // Calculate if generation is possible
+  const canGenerateStandard = selectedPlayerIds.length >= 2;
+  const canGenerateTwoPools = mode === "two_pools" 
+    && unassignedPlayers.length === 0 
+    && selectedPlayerIds.length > 0
+    && (poolAPlayers.length >= 2 || poolBPlayers.length >= 2);
+  
+  const canGenerate = mode === "two_pools" ? canGenerateTwoPools : canGenerateStandard;
+  
+  // Check if we have generated teams to show
+  const hasGeneratedTeams = mode === "two_pools" 
+    ? (twoPoolsTeams?.poolA || twoPoolsTeams?.poolB) 
+    : generatedTeams;
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -162,8 +290,13 @@ export default function GeneratePage() {
                   key={m}
                   variant={mode === m ? "default" : "outline"}
                   size="sm"
-                  onClick={() => updateWorkspace({ mode: m })}
-                  disabled={m !== "standard"} // Only standard implemented for now
+                  onClick={() => updateWorkspace({ 
+                    mode: m, 
+                    generatedTeams: null, 
+                    twoPoolsTeams: null,
+                    poolAssignments: {} 
+                  })}
+                  disabled={m === "preset_teams" || m === "tournament"}
                   className="text-xs"
                   data-testid={`button-mode-${m}`}
                 >
@@ -224,7 +357,7 @@ export default function GeneratePage() {
         </Card>
 
         <AnimatePresence mode="wait">
-          {!generatedTeams ? (
+          {!hasGeneratedTeams ? (
             <motion.div
               key="selection"
               initial={{ opacity: 0, x: -20 }}
@@ -267,20 +400,23 @@ export default function GeneratePage() {
                     {allPlayers.map(player => {
                       const isSelected = selectedPlayerIds.includes(player.id);
                       const hasOffHand = player.weakHandEnabled && player.weakHandRating !== null;
+                      const playerPool = poolAssignments[player.id];
                       
                       return (
                         <div 
                           key={player.id}
-                          onClick={() => togglePlayer(player.id)}
                           className={`
-                            flex items-center justify-between p-2.5 rounded-lg border transition-all cursor-pointer
+                            flex items-center justify-between p-2.5 rounded-lg border transition-all
                             ${isSelected 
                               ? 'bg-primary/10 border-primary/30' 
                               : 'bg-background/50 border-transparent hover:border-border/50'}
                           `}
                           data-testid={`player-select-${player.id}`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div 
+                            className="flex items-center gap-2 flex-1 cursor-pointer"
+                            onClick={() => togglePlayer(player.id)}
+                          >
                             <div className={`
                               h-7 w-7 rounded-md flex items-center justify-center font-bold text-[10px]
                               ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}
@@ -297,7 +433,34 @@ export default function GeneratePage() {
                               )}
                             </div>
                           </div>
-                          <Checkbox checked={isSelected} data-testid={`checkbox-player-${player.id}`} />
+                          
+                          <div className="flex items-center gap-2">
+                            {mode === "two_pools" && isSelected && (
+                              <div className="flex gap-0.5" onClick={e => e.stopPropagation()}>
+                                <Button
+                                  variant={playerPool === "A" ? "default" : "outline"}
+                                  size="sm"
+                                  className={`h-6 w-6 p-0 text-[10px] font-bold ${playerPool === "A" ? 'bg-amber-500 hover:bg-amber-600 text-white' : ''}`}
+                                  onClick={() => setPlayerPool(player.id, playerPool === "A" ? null : "A")}
+                                  data-testid={`button-pool-a-${player.id}`}
+                                >
+                                  A
+                                </Button>
+                                <Button
+                                  variant={playerPool === "B" ? "default" : "outline"}
+                                  size="sm"
+                                  className={`h-6 w-6 p-0 text-[10px] font-bold ${playerPool === "B" ? 'bg-violet-500 hover:bg-violet-600 text-white' : ''}`}
+                                  onClick={() => setPlayerPool(player.id, playerPool === "B" ? null : "B")}
+                                  data-testid={`button-pool-b-${player.id}`}
+                                >
+                                  B
+                                </Button>
+                              </div>
+                            )}
+                            <div className="cursor-pointer" onClick={() => togglePlayer(player.id)}>
+                              <Checkbox checked={isSelected} data-testid={`checkbox-player-${player.id}`} />
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -311,6 +474,44 @@ export default function GeneratePage() {
                 </CardContent>
               </Card>
 
+              {/* Pool Stats for Two Pools Mode */}
+              {mode === "two_pools" && selectedPlayerIds.length > 0 && (
+                <Card className="border-border/50">
+                  <CardContent className="px-4 py-3 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30">
+                            Pool A: {poolAPlayers.length}
+                          </Badge>
+                          {poolAWarning && (
+                            <span className="text-[10px] text-amber-500">{poolAWarning}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-violet-500/20 text-violet-500 border-violet-500/30">
+                            Pool B: {poolBPlayers.length}
+                          </Badge>
+                          {poolBWarning && (
+                            <span className="text-[10px] text-violet-500">{poolBWarning}</span>
+                          )}
+                        </div>
+                      </div>
+                      {unassignedPlayers.length > 0 && (
+                        <Badge variant="destructive" className="text-[10px]">
+                          {unassignedPlayers.length} unassigned
+                        </Badge>
+                      )}
+                    </div>
+                    {unassignedPlayers.length > 0 && (
+                      <p className="text-[10px] text-destructive">
+                        All selected players must be assigned to a pool before generating.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Generate Button */}
               <Button 
                 className="w-full h-12 rounded-xl text-base font-bold gap-2 shadow-lg shadow-primary/20"
@@ -322,7 +523,102 @@ export default function GeneratePage() {
                 Generate Teams ({selectedPlayerIds.length} players)
               </Button>
             </motion.div>
-          ) : (
+          ) : mode === "two_pools" && twoPoolsTeams ? (
+            <motion.div
+              key="results-two-pools"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="space-y-4"
+            >
+              {/* Pool A Teams */}
+              {twoPoolsTeams.poolA && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 px-1">
+                    <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30 font-bold">
+                      Pool A
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    <TeamCard
+                      team={twoPoolsTeams.poolA.black}
+                      colorClass="primary"
+                      onMovePlayer={(playerId) => handleMovePlayer(playerId, "White")}
+                    />
+                    <div className="flex items-center justify-center">
+                      <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
+                        <span className="text-[8px] font-bold text-muted-foreground">VS</span>
+                      </div>
+                    </div>
+                    <TeamCard
+                      team={twoPoolsTeams.poolA.white}
+                      colorClass="cyan-400"
+                      onMovePlayer={(playerId) => handleMovePlayer(playerId, "Black")}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Pool B Teams */}
+              {twoPoolsTeams.poolB && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 px-1">
+                    <Badge className="bg-violet-500/20 text-violet-500 border-violet-500/30 font-bold">
+                      Pool B
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    <TeamCard
+                      team={twoPoolsTeams.poolB.black}
+                      colorClass="primary"
+                      onMovePlayer={(playerId) => handleMovePlayer(playerId, "White")}
+                    />
+                    <div className="flex items-center justify-center">
+                      <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
+                        <span className="text-[8px] font-bold text-muted-foreground">VS</span>
+                      </div>
+                    </div>
+                    <TeamCard
+                      team={twoPoolsTeams.poolB.white}
+                      colorClass="cyan-400"
+                      onMovePlayer={(playerId) => handleMovePlayer(playerId, "Black")}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2">
+                <Button 
+                  variant="outline" 
+                  className="w-full h-10 rounded-xl gap-2 text-sm"
+                  onClick={() => updateWorkspace({ twoPoolsTeams: null })}
+                  data-testid="button-reselect"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Reselect Players
+                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    variant="secondary"
+                    className="h-10 rounded-xl gap-2 text-sm"
+                    onClick={handleReroll}
+                    data-testid="button-reroll"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Re-roll
+                  </Button>
+                  <Button 
+                    className="h-10 rounded-xl gap-2 text-sm"
+                    onClick={handleConfirmTwoPools}
+                    data-testid="button-confirm"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Confirm All
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          ) : generatedTeams ? (
             <motion.div
               key="results"
               initial={{ opacity: 0, scale: 0.95 }}
@@ -418,7 +714,7 @@ export default function GeneratePage() {
                 </div>
               </div>
             </motion.div>
-          )}
+          ) : null}
         </AnimatePresence>
       </div>
 
