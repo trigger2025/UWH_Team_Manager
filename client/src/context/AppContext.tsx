@@ -316,8 +316,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           white: { ...teams.white, players: teams.white.players.map(p => ({ ...p })) }
         },
         mode: prev.generationWorkspace.mode,
-        formation: prev.generationWorkspace.formation,
-        useOffHandRatings: prev.generationWorkspace.useOffHandRatings
+        teamFormations: { ...prev.generationWorkspace.teamFormations },
+        playerOffHandSelections: { ...prev.generationWorkspace.playerOffHandSelections }
       };
 
       const newHistory = [snapshot, ...prev.generationWorkspace.history].slice(0, MAX_HISTORY_SIZE);
@@ -344,8 +344,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         generationWorkspace: {
           ...prev.generationWorkspace,
           generatedTeams: snapshot.teams,
-          formation: snapshot.formation,
-          useOffHandRatings: snapshot.useOffHandRatings,
+          teamFormations: snapshot.teamFormations,
+          playerOffHandSelections: snapshot.playerOffHandSelections,
           historyIndex: index
         }
       };

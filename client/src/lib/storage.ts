@@ -12,15 +12,61 @@ export const STORAGE_KEYS = {
 
 export const DEFAULT_GENERATION_WORKSPACE: GenerationWorkspace = {
   mode: "standard",
-  formation: "3-3",
+  teamFormations: { black: "3-3", white: "3-3" },
   selectedPlayerIds: [],
-  useOffHandRatings: false,
+  playerOffHandSelections: {},
   generatedTeams: null,
   poolAssignments: {},
   twoPoolsTeams: null,
   history: [],
-  historyIndex: -1
+  historyIndex: -1,
+  pendingMatch: null
 };
+
+// Migrate legacy workspace data to new schema
+function migrateWorkspace(saved: any): GenerationWorkspace {
+  const migrated: GenerationWorkspace = { ...DEFAULT_GENERATION_WORKSPACE };
+  
+  if (!saved) return migrated;
+  
+  // Copy over fields that haven't changed
+  if (saved.mode) migrated.mode = saved.mode;
+  if (saved.selectedPlayerIds) migrated.selectedPlayerIds = saved.selectedPlayerIds;
+  if (saved.generatedTeams) migrated.generatedTeams = saved.generatedTeams;
+  if (saved.poolAssignments) migrated.poolAssignments = saved.poolAssignments;
+  if (saved.twoPoolsTeams) migrated.twoPoolsTeams = saved.twoPoolsTeams;
+  if (saved.historyIndex !== undefined) migrated.historyIndex = saved.historyIndex;
+  if (saved.pendingMatch) migrated.pendingMatch = saved.pendingMatch;
+  
+  // Migrate formation -> teamFormations
+  if (saved.teamFormations) {
+    migrated.teamFormations = saved.teamFormations;
+  } else if (saved.formation) {
+    migrated.teamFormations = { black: saved.formation, white: saved.formation };
+  }
+  
+  // Migrate useOffHandRatings -> playerOffHandSelections
+  if (saved.playerOffHandSelections) {
+    migrated.playerOffHandSelections = saved.playerOffHandSelections;
+  }
+  // Note: We don't auto-populate playerOffHandSelections from legacy useOffHandRatings
+  // since the new model requires explicit per-player selection
+  
+  // Migrate history snapshots
+  if (saved.history && Array.isArray(saved.history)) {
+    migrated.history = saved.history.map((snapshot: any) => ({
+      id: snapshot.id,
+      timestamp: snapshot.timestamp,
+      teams: snapshot.teams,
+      mode: snapshot.mode || "standard",
+      teamFormations: snapshot.teamFormations || 
+        (snapshot.formation ? { black: snapshot.formation, white: snapshot.formation } : { black: "3-3", white: "3-3" }),
+      playerOffHandSelections: snapshot.playerOffHandSelections || {}
+    }));
+  }
+  
+  return migrated;
+}
 
 export interface AppData {
   players: Player[];
@@ -63,13 +109,10 @@ export const storage = {
       weakHandRating: p.weakHandEnabled ? (typeof p.weakHandRating === 'number' ? Math.round(Math.min(Math.max(p.weakHandRating <= 10 ? p.weakHandRating * 100 : p.weakHandRating, 0), 1000)) : 300) : null,
     }));
     
-    const savedWorkspace = this.read<Partial<GenerationWorkspace> | null>(STORAGE_KEYS.GENERATION_WORKSPACE, null);
+    const savedWorkspace = this.read<any>(STORAGE_KEYS.GENERATION_WORKSPACE, null);
     
-    // Merge saved workspace with defaults to ensure all fields exist
-    const mergedWorkspace: GenerationWorkspace = {
-      ...DEFAULT_GENERATION_WORKSPACE,
-      ...(savedWorkspace || {})
-    };
+    // Migrate saved workspace from legacy format to new schema
+    const mergedWorkspace = migrateWorkspace(savedWorkspace);
     
     return {
       players: migratedPlayers,

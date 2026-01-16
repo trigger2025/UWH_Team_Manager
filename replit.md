@@ -36,14 +36,16 @@ Preferred communication style: Simple, everyday language.
 - **Formation Preferences**: Per-formation position preferences (3-3 and 1-3-2 formations have separate, distinct positions)
 
 ## Team Generation System
-- **Generation Workspace**: Persistent state across navigation (mode, formation, selected players, off-hand toggle, generated teams, pool assignments, history)
+- **Generation Workspace**: Persistent state across navigation (mode, teamFormations, selected players, playerOffHandSelections, generated teams, pool assignments, history)
 - **Formation Positions**: 3-3 uses Forward, Centre, Half Back, Centre Back; 1-3-2 uses Forward, Wing, Centre, Back
-- **Off-hand Support**: Toggle enables using weakHandRating instead of primary rating for team generation
+- **Per-Team Formations**: Black and White teams can have different formations selected independently via `teamFormations: { black: FormationType, white: FormationType }`
+- **Per-Player Off-hand Selection**: Individual players with off-hand enabled can toggle to use their off-hand rating via cyan "Off" button; stored in `playerOffHandSelections: Record<number, boolean>`
 - **Explicit Selection**: Players must be explicitly selected before generation (none selected by default)
-- **History**: Last 10 generated team states with Older/Newer navigation for rollback
+- **History**: Last 10 generated team states with Older/Newer navigation for rollback; history stores teamFormations and playerOffHandSelections
 - **Manual Editing**: Move players between teams without automatic rebalancing or role reassignment
 - **Match Snapshots**: Confirm creates MatchTeamSnapshot with rating snapshots (ratingUsed, usedOffHand, team, position) for each player
 - **Modes**: Standard mode and Two Pools mode implemented; Preset Teams and Tournament modes are placeholders
+- **Delete Confirmations**: AlertDialog confirmation required before deleting matches or players
 
 ## Two Pools Mode
 - **Pool Assignment**: Each selected player must be assigned to Pool A or Pool B before generation

@@ -22,7 +22,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GeneratedTeam, FormationType, GenerationMode, PlayerWithAssignedFormationRole, PoolAssignment, TwoPoolsGeneratedTeams } from "@shared/schema";
+import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PoolAssignment, TwoPoolsGeneratedTeams } from "@shared/schema";
 import { useLocation } from "wouter";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
@@ -51,9 +51,9 @@ export default function GeneratePage() {
 
   const { 
     mode, 
-    formation, 
+    teamFormations, 
     selectedPlayerIds, 
-    useOffHandRatings, 
+    playerOffHandSelections, 
     generatedTeams,
     poolAssignments,
     twoPoolsTeams,
@@ -102,6 +102,25 @@ export default function GeneratePage() {
     updateWorkspace({ poolAssignments: {} });
   };
 
+  // Per-player off-hand toggle
+  const togglePlayerOffHand = (playerId: number) => {
+    const newSelections = { ...playerOffHandSelections };
+    if (newSelections[playerId]) {
+      delete newSelections[playerId];
+    } else {
+      newSelections[playerId] = true;
+    }
+    updateWorkspace({ playerOffHandSelections: newSelections });
+  };
+
+  // Update team formation
+  const setTeamFormation = (team: "black" | "white", formation: FormationType) => {
+    updateWorkspace({ 
+      teamFormations: { ...teamFormations, [team]: formation },
+      generatedTeams: null 
+    });
+  };
+
   // Calculate pool stats for Two Pools mode
   const poolAPlayers = selectedPlayerIds.filter(id => poolAssignments[id] === "A");
   const poolBPlayers = selectedPlayerIds.filter(id => poolAssignments[id] === "B");
@@ -133,16 +152,16 @@ export default function GeneratePage() {
       if (poolAPlayerObjs.length >= 2) {
         poolATeams = generateTeams(
           poolAPlayerObjs,
-          { black: formation, white: formation },
-          { useOffHand: useOffHandRatings }
+          teamFormations,
+          { playerOffHandSelections }
         );
       }
       
       if (poolBPlayerObjs.length >= 2) {
         poolBTeams = generateTeams(
           poolBPlayerObjs,
-          { black: formation, white: formation },
-          { useOffHand: useOffHandRatings }
+          teamFormations,
+          { playerOffHandSelections }
         );
       }
       
@@ -156,8 +175,8 @@ export default function GeneratePage() {
 
       const result = generateTeams(
         selectedPlayers, 
-        { black: formation, white: formation },
-        { useOffHand: useOffHandRatings }
+        teamFormations,
+        { playerOffHandSelections }
       );
       addToHistory(result);
     }
@@ -181,8 +200,8 @@ export default function GeneratePage() {
   const handleConfirm = () => {
     if (!generatedTeams) return;
     
-    // Create snapshot with rating information
-    const teamSnapshot = createMatchTeamSnapshot(generatedTeams, players, useOffHandRatings);
+    // Create snapshot with rating information (per-player off-hand already stored in player data)
+    const teamSnapshot = createMatchTeamSnapshot(generatedTeams, players);
     
     // Save match result with team snapshots
     saveMatchResult({
@@ -190,7 +209,7 @@ export default function GeneratePage() {
       teams: teamSnapshot,
       completed: false,
       poolId: null,
-      formation: formation,
+      formation: generatedTeams.black.formation, // Use the team's formation
       blackScore: null,
       whiteScore: null,
       tournamentId: null,
@@ -210,13 +229,13 @@ export default function GeneratePage() {
     
     // Create and save matches for each pool with teams
     if (twoPoolsTeams.poolA) {
-      const snapshotA = createMatchTeamSnapshot(twoPoolsTeams.poolA, players, useOffHandRatings);
+      const snapshotA = createMatchTeamSnapshot(twoPoolsTeams.poolA, players);
       saveMatchResult({
         date: now,
         teams: snapshotA,
         completed: false,
         poolId: null,
-        formation: formation,
+        formation: twoPoolsTeams.poolA.black.formation,
         blackScore: null,
         whiteScore: null,
         tournamentId: null,
@@ -224,13 +243,13 @@ export default function GeneratePage() {
     }
     
     if (twoPoolsTeams.poolB) {
-      const snapshotB = createMatchTeamSnapshot(twoPoolsTeams.poolB, players, useOffHandRatings);
+      const snapshotB = createMatchTeamSnapshot(twoPoolsTeams.poolB, players);
       saveMatchResult({
         date: new Date(now.getTime() + 1), // Slight offset so they sort correctly
         teams: snapshotB,
         completed: false,
         poolId: null,
-        formation: formation,
+        formation: twoPoolsTeams.poolB.black.formation,
         blackScore: null,
         whiteScore: null,
         tournamentId: null,
@@ -248,7 +267,9 @@ export default function GeneratePage() {
     updateWorkspace({ generatedTeams: null });
   };
 
-  const positionCount = FORMATION_ROLES[formation].length;
+  // Get unique positions for display (using black team formation as default)
+  const getUniquePositions = (formation: FormationType) => 
+    FORMATION_ROLES[formation].filter((v: FormationPosition, i: number, a: FormationPosition[]) => a.indexOf(v) === i);
   
   // Calculate if generation is possible
   const canGenerateStandard = selectedPlayerIds.length >= 2;
@@ -307,52 +328,63 @@ export default function GeneratePage() {
           </CardContent>
         </Card>
 
-        {/* Formation Selector */}
+        {/* Per-Team Formation Selectors */}
         <Card className="border-border/50">
           <CardHeader className="pb-2 pt-3 px-4">
             <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Formation
+              Team Formations
             </CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <div className="flex gap-2">
-              {(["3-3", "1-3-2"] as FormationType[]).map(f => (
-                <Button
-                  key={f}
-                  variant={formation === f ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => updateWorkspace({ formation: f, generatedTeams: null })}
-                  className="text-xs flex-1"
-                  data-testid={`button-formation-${f}`}
-                >
-                  {FORMATION_LABELS[f]}
-                </Button>
-              ))}
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-2">
-              Positions: {FORMATION_ROLES[formation].filter((v, i, a) => a.indexOf(v) === i).join(", ")}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Off-hand Toggle */}
-        <Card className="border-border/50">
-          <CardContent className="px-4 py-3">
-            <div className="flex items-center justify-between">
+          <CardContent className="px-4 pb-3 space-y-3">
+            {/* Black Team Formation */}
+            <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <Hand className="h-4 w-4 text-muted-foreground" />
-                <Label htmlFor="offhand-toggle" className="text-sm">Use off-hand ratings</Label>
+                <div className="h-2 w-2 rounded-full bg-primary" />
+                <span className="text-xs font-medium">Black Team</span>
               </div>
-              <Switch
-                id="offhand-toggle"
-                checked={useOffHandRatings}
-                onCheckedChange={(checked) => updateWorkspace({ useOffHandRatings: checked })}
-                data-testid="switch-offhand"
-              />
+              <div className="flex gap-2">
+                {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                  <Button
+                    key={f}
+                    variant={teamFormations.black === f ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTeamFormation("black", f)}
+                    className="text-xs flex-1"
+                    data-testid={`button-formation-black-${f}`}
+                  >
+                    {FORMATION_LABELS[f]}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-[9px] text-muted-foreground">
+                Positions: {getUniquePositions(teamFormations.black).join(", ")}
+              </p>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-1 pl-6">
-              When enabled, uses off-hand rating for players who have it enabled.
-            </p>
+            
+            {/* White Team Formation */}
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-cyan-400" />
+                <span className="text-xs font-medium">White Team</span>
+              </div>
+              <div className="flex gap-2">
+                {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                  <Button
+                    key={f}
+                    variant={teamFormations.white === f ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTeamFormation("white", f)}
+                    className="text-xs flex-1"
+                    data-testid={`button-formation-white-${f}`}
+                  >
+                    {FORMATION_LABELS[f]}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-[9px] text-muted-foreground">
+                Positions: {getUniquePositions(teamFormations.white).join(", ")}
+              </p>
+            </div>
           </CardContent>
         </Card>
 
@@ -401,6 +433,7 @@ export default function GeneratePage() {
                       const isSelected = selectedPlayerIds.includes(player.id);
                       const hasOffHand = player.weakHandEnabled && player.weakHandRating !== null;
                       const playerPool = poolAssignments[player.id];
+                      const usingOffHand = playerOffHandSelections[player.id] === true;
                       
                       return (
                         <div 
@@ -421,20 +454,36 @@ export default function GeneratePage() {
                               h-7 w-7 rounded-md flex items-center justify-center font-bold text-[10px]
                               ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}
                             `}>
-                              {player.rating}
+                              {usingOffHand ? player.weakHandRating : player.rating}
                             </div>
                             <div className="flex flex-col">
                               <span className="text-sm font-medium">{player.name}</span>
-                              {hasOffHand && useOffHandRatings && (
-                                <span className="text-[9px] text-cyan-500 flex items-center gap-0.5">
-                                  <Hand className="h-2.5 w-2.5" />
-                                  {player.weakHandRating}
+                              {hasOffHand && (
+                                <span className="text-[9px] text-muted-foreground">
+                                  Main: {player.rating} / Off: {player.weakHandRating}
                                 </span>
                               )}
                             </div>
                           </div>
                           
                           <div className="flex items-center gap-2">
+                            {/* Per-player off-hand toggle - only visible for players with off-hand enabled */}
+                            {hasOffHand && isSelected && (
+                              <Button
+                                variant={usingOffHand ? "default" : "outline"}
+                                size="sm"
+                                className={`h-6 px-2 text-[10px] gap-1 ${usingOffHand ? 'bg-cyan-500 hover:bg-cyan-600 text-white' : ''}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  togglePlayerOffHand(player.id);
+                                }}
+                                data-testid={`button-offhand-${player.id}`}
+                              >
+                                <Hand className="h-3 w-3" />
+                                Off
+                              </Button>
+                            )}
+                            
                             {mode === "two_pools" && isSelected && (
                               <div className="flex gap-0.5" onClick={e => e.stopPropagation()}>
                                 <Button

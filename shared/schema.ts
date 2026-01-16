@@ -165,18 +165,37 @@ export interface TwoPoolsGeneratedTeams {
   poolB: { black: GeneratedTeam; white: GeneratedTeam } | null;
 }
 
+// Per-player off-hand selection during generation
+export interface PlayerOffHandSelection {
+  [playerId: number]: boolean; // true = use off-hand, false = use main hand
+}
+
+// Team formation configuration
+export interface TeamFormations {
+  black: FormationType;
+  white: FormationType;
+}
+
 // Generation workspace state (persisted globally)
 export interface GenerationWorkspace {
   mode: GenerationMode;
-  formation: FormationType;
+  teamFormations: TeamFormations; // Per-team formations
   selectedPlayerIds: number[];
-  useOffHandRatings: boolean;
+  playerOffHandSelections: PlayerOffHandSelection; // Per-player off-hand toggle
   generatedTeams: { black: GeneratedTeam; white: GeneratedTeam } | null;
   // Two pools mode specific
   poolAssignments: Record<number, PoolAssignment>; // playerId -> pool
   twoPoolsTeams: TwoPoolsGeneratedTeams | null;
   history: GeneratedTeamsSnapshot[];
   historyIndex: number; // Current position in history (-1 = none)
+  // Pending match for Results page (created on Confirm but not saved until scores entered)
+  pendingMatch: PendingMatch | null;
+}
+
+// Pending match state (teams locked, waiting for scores)
+export interface PendingMatch {
+  teams: MatchTeamSnapshot;
+  createdAt: string;
 }
 
 export interface GeneratedTeamsSnapshot {
@@ -184,8 +203,8 @@ export interface GeneratedTeamsSnapshot {
   timestamp: string;
   teams: { black: GeneratedTeam; white: GeneratedTeam };
   mode: GenerationMode;
-  formation: FormationType;
-  useOffHandRatings: boolean;
+  teamFormations: TeamFormations;
+  playerOffHandSelections: PlayerOffHandSelection;
 }
 
 // --- Zod Schemas & Types ---

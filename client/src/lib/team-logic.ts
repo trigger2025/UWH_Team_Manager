@@ -1,4 +1,4 @@
-import { Player, FormationType, FormationPosition, GeneratedTeam, PlayerWithAssignedFormationRole, MatchTeamSnapshot, PlayerRatingSnapshot } from "@shared/schema";
+import { Player, FormationType, FormationPosition, GeneratedTeam, PlayerWithAssignedFormationRole, MatchTeamSnapshot, PlayerRatingSnapshot, PlayerOffHandSelection } from "@shared/schema";
 
 /**
  * Canonical roles for each supported formation (matching schema positions exactly)
@@ -18,9 +18,15 @@ export const FORMATION_ROLES: Record<FormationType, FormationPosition[]> = {
 };
 
 /**
- * Gets the effective rating for a player based on off-hand setting
+ * Gets the effective rating for a player based on per-player off-hand selection
+ * @param player - The player to get rating for
+ * @param playerOffHandSelections - Map of playerId to whether off-hand is selected
  */
-export function getEffectiveRating(player: Player, useOffHand: boolean): { rating: number; usedOffHand: boolean } {
+export function getEffectiveRating(
+  player: Player, 
+  playerOffHandSelections: PlayerOffHandSelection = {}
+): { rating: number; usedOffHand: boolean } {
+  const useOffHand = playerOffHandSelections[player.id] === true;
   if (useOffHand && player.weakHandEnabled && player.weakHandRating !== null) {
     return { rating: player.weakHandRating, usedOffHand: true };
   }
@@ -45,7 +51,7 @@ export function validateFormation(players: Player[], formation: FormationType): 
 export function assignFormationRoles(
   players: Player[], 
   formation: FormationType,
-  useOffHand: boolean = false
+  playerOffHandSelections: PlayerOffHandSelection = {}
 ): PlayerWithAssignedFormationRole[] {
   const roles = [...FORMATION_ROLES[formation]];
   const assignedPlayers: PlayerWithAssignedFormationRole[] = [];
@@ -53,8 +59,8 @@ export function assignFormationRoles(
 
   // Sort by effective rating descending
   unassignedPlayers.sort((a, b) => {
-    const aRating = getEffectiveRating(a, useOffHand).rating;
-    const bRating = getEffectiveRating(b, useOffHand).rating;
+    const aRating = getEffectiveRating(a, playerOffHandSelections).rating;
+    const bRating = getEffectiveRating(b, playerOffHandSelections).rating;
     return bRating - aRating;
   });
 
@@ -65,7 +71,7 @@ export function assignFormationRoles(
     const roleIndex = roles.indexOf(pref?.main);
     
     if (pref?.main && roleIndex !== -1) {
-      const { rating, usedOffHand } = getEffectiveRating(player, useOffHand);
+      const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
       assignedPlayers.push({
         ...player,
         assignedPosition: pref.main as FormationPosition,
@@ -86,7 +92,7 @@ export function assignFormationRoles(
     const altRole = pref?.alternates?.find((alt: string) => roles.includes(alt as FormationPosition));
     
     if (altRole) {
-      const { rating, usedOffHand } = getEffectiveRating(player, useOffHand);
+      const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
       assignedPlayers.push({
         ...player,
         assignedPosition: altRole as FormationPosition,
@@ -103,7 +109,7 @@ export function assignFormationRoles(
   // 3. Fill remaining roles by best fit (rating order)
   for (const player of finalUnassigned) {
     if (roles.length > 0) {
-      const { rating, usedOffHand } = getEffectiveRating(player, useOffHand);
+      const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
       assignedPlayers.push({
         ...player,
         assignedPosition: roles.shift()!,
@@ -118,7 +124,7 @@ export function assignFormationRoles(
 }
 
 export interface GenerateTeamsOptions {
-  useOffHand: boolean;
+  playerOffHandSelections: PlayerOffHandSelection;
 }
 
 /**
@@ -127,14 +133,14 @@ export interface GenerateTeamsOptions {
 export function generateTeams(
   availablePlayers: Player[], 
   teamFormationMap: { black: FormationType; white: FormationType },
-  options: GenerateTeamsOptions = { useOffHand: false }
+  options: GenerateTeamsOptions = { playerOffHandSelections: {} }
 ): { black: GeneratedTeam; white: GeneratedTeam } {
-  const { useOffHand } = options;
+  const { playerOffHandSelections } = options;
   
   // Sort players by effective rating descending
   const sortedPlayers = [...availablePlayers].sort((a, b) => {
-    const aRating = getEffectiveRating(a, useOffHand).rating;
-    const bRating = getEffectiveRating(b, useOffHand).rating;
+    const aRating = getEffectiveRating(a, playerOffHandSelections).rating;
+    const bRating = getEffectiveRating(b, playerOffHandSelections).rating;
     return bRating - aRating;
   });
   
@@ -156,7 +162,7 @@ export function generateTeams(
   });
 
   // Post-generation balancing (simple swap if imbalance is high)
-  const getRating = (team: Player[]) => team.reduce((sum, p) => getEffectiveRating(p, useOffHand).rating + sum, 0);
+  const getRating = (team: Player[]) => team.reduce((sum, p) => getEffectiveRating(p, playerOffHandSelections).rating + sum, 0);
   
   let bRating = getRating(blackPlayers);
   let wRating = getRating(whitePlayers);
@@ -171,8 +177,8 @@ export function generateTeams(
 
     for (let b = 0; b < blackPlayers.length; b++) {
       for (let w = 0; w < whitePlayers.length; w++) {
-        const bPlayerRating = getEffectiveRating(blackPlayers[b], useOffHand).rating;
-        const wPlayerRating = getEffectiveRating(whitePlayers[w], useOffHand).rating;
+        const bPlayerRating = getEffectiveRating(blackPlayers[b], playerOffHandSelections).rating;
+        const wPlayerRating = getEffectiveRating(whitePlayers[w], playerOffHandSelections).rating;
         const swapDiff = (bPlayerRating - wPlayerRating) * 2;
         const newDiff = diff - swapDiff;
         const improvement = Math.abs(diff) - Math.abs(newDiff);
@@ -193,8 +199,8 @@ export function generateTeams(
     } else break;
   }
 
-  const blackAssigned = assignFormationRoles(blackPlayers, teamFormationMap.black, useOffHand);
-  const whiteAssigned = assignFormationRoles(whitePlayers, teamFormationMap.white, useOffHand);
+  const blackAssigned = assignFormationRoles(blackPlayers, teamFormationMap.black, playerOffHandSelections);
+  const whiteAssigned = assignFormationRoles(whitePlayers, teamFormationMap.white, playerOffHandSelections);
 
   return {
     black: {
@@ -218,7 +224,7 @@ export function generateTeams(
 export function reJigTeams(
   existingTeams: { black: GeneratedTeam; white: GeneratedTeam },
   lockedPlayerIds: number[],
-  options: GenerateTeamsOptions = { useOffHand: false }
+  options: GenerateTeamsOptions = { playerOffHandSelections: {} }
 ): { black: GeneratedTeam; white: GeneratedTeam } {
   const allPlayers = [
     ...existingTeams.black.players,
@@ -285,8 +291,7 @@ export function cloneTeams(teams: { black: GeneratedTeam; white: GeneratedTeam }
  */
 export function createMatchTeamSnapshot(
   teams: { black: GeneratedTeam; white: GeneratedTeam },
-  players: Player[],
-  useOffHandRatings: boolean
+  players: Player[]
 ): MatchTeamSnapshot {
   const createPlayerSnapshots = (team: GeneratedTeam, teamColor: "Black" | "White"): PlayerRatingSnapshot[] => {
     return team.players.map(p => {
@@ -304,6 +309,9 @@ export function createMatchTeamSnapshot(
     });
   };
 
+  // Check if any player used off-hand rating (derived from per-player selections)
+  const anyUsedOffHand = [...teams.black.players, ...teams.white.players].some(p => p.usedOffHand);
+
   return {
     black: {
       players: createPlayerSnapshots(teams.black, "Black"),
@@ -315,7 +323,7 @@ export function createMatchTeamSnapshot(
       totalRating: teams.white.totalRating,
       formation: teams.white.formation
     },
-    useOffHandRatings,
+    useOffHandRatings: anyUsedOffHand, // Keep for backwards compatibility
     timestamp: new Date().toISOString()
   };
 }

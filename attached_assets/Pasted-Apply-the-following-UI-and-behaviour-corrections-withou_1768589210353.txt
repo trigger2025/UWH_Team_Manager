@@ -1,0 +1,56 @@
+Apply the following UI and behaviour corrections without altering core generation logic.
+
+1) Off-hand Rating Control
+- Remove the global “Use off-hand ratings” toggle.
+- Add a per-player toggle in Team Generation:
+  - Only visible if the player has weakHandEnabled = true.
+- Store, per player per team:
+  - Whether main or off-hand rating was used.
+- Rating adjustments must apply to the rating that was used.
+
+2) Formation Per Team
+- Remove any global formation selector.
+- Each generated team must have its own formation selector.
+- Formation options:
+  - 3-3: Forward, Centre, Half Back, Centre Back
+  - 1-3-2: Forward, Wing, Centre, Back
+- Position validation must use the team’s selected formation only.
+- Formation choice must be saved in generated team state and match snapshots.
+
+3) Tournament Mode Cleanup
+- Remove the tournament rating reduction toggle from the Match Results UI.
+- Tournament mode must exist only as a Team Generation mode.
+- Rating adjustments in tournament mode must be handled internally, not via user toggles.
+
+4) Generated Teams History
+- Implement a bounded generated-teams history (e.g. last 10).
+- Allow users to reload a previous generated state.
+- Generate and Re-roll create new history entries.
+- Manual edits modify the active state only.
+- Navigating away and back must not clear the active state.
+
+5) Buttons & Visual Feedback
+- All buttons must show:
+  - Pressed state
+  - Disabled state when action is unavailable
+- Primary actions (Generate, Re-roll, Confirm) must give immediate visual feedback.
+
+6) Confirm & Match Results
+- Confirm Teams must:
+  - Lock the current generated teams
+  - Navigate to the Match Results screen
+  - NOT create a match result record
+- Match results are created only when scores are saved.
+
+7) Deleting Match Results
+- Add the ability to delete individual match results.
+- Deleting a match result must NOT revert ratings automatically.
+- All delete actions must show a confirmation prompt.
+
+8) Confirmation Prompts
+- Add confirmation dialogs for:
+  - Deleting match results
+  - Clearing generated teams
+  - Any future destructive data actions
+
+Stop after implementing these changes.

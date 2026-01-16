@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Trophy, 
   History, 
@@ -21,6 +20,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Match, Player } from "@shared/schema";
 
 export default function ResultsPage() {
@@ -28,14 +28,13 @@ export default function ResultsPage() {
   const [scoringMatchId, setScoringMatchId] = useState<number | null>(null);
   const [blackScore, setBlackScore] = useState("");
   const [whiteScore, setWhiteScore] = useState("");
-  const [isTournament, setIsTournament] = useState(false);
 
   const handleComplete = (id: number) => {
     const b = parseInt(blackScore);
     const w = parseInt(whiteScore);
     if (isNaN(b) || isNaN(w)) return;
 
-    completeMatch(id, b, w, isTournament);
+    completeMatch(id, b, w, false); // Tournament mode disabled
     setScoringMatchId(null);
     setBlackScore("");
     setWhiteScore("");
@@ -77,7 +76,7 @@ export default function ResultsPage() {
                 <Timer className="h-8 w-8 opacity-20" />
               </div>
               <p className="text-muted-foreground">No matches recorded yet.</p>
-              <Button variant="link" onClick={() => window.location.href='/generate'}>
+              <Button variant="ghost" onClick={() => window.location.href='/generate'}>
                 Generate a match
               </Button>
             </motion.div>
@@ -102,12 +101,10 @@ export default function ResultsPage() {
                       isScoring={scoringMatchId === match.id}
                       blackScore={blackScore}
                       whiteScore={whiteScore}
-                      isTournament={isTournament}
                       onScoreClick={() => setScoringMatchId(match.id)}
                       onCancelScoring={() => setScoringMatchId(null)}
                       onBlackScoreChange={setBlackScore}
                       onWhiteScoreChange={setWhiteScore}
-                      onTournamentChange={setIsTournament}
                       onComplete={() => handleComplete(match.id)}
                       onDelete={() => deleteMatchResult(match.id)}
                     />
@@ -124,9 +121,9 @@ export default function ResultsPage() {
 }
 
 function MatchCard({ 
-  match, isScoring, blackScore, whiteScore, isTournament,
+  match, isScoring, blackScore, whiteScore,
   onScoreClick, onCancelScoring, onBlackScoreChange, onWhiteScoreChange, 
-  onTournamentChange, onComplete, onDelete 
+  onComplete, onDelete 
 }: any) {
   const [isOpen, setIsOpen] = useState(false);
   const teams = match.teams as any;
@@ -211,6 +208,7 @@ function MatchCard({
                       value={blackScore} 
                       onChange={(e) => onBlackScoreChange(e.target.value)}
                       className="text-center font-bold text-lg h-12"
+                      data-testid="input-black-score"
                     />
                   </div>
                   <div className="space-y-2">
@@ -220,24 +218,17 @@ function MatchCard({
                       value={whiteScore} 
                       onChange={(e) => onWhiteScoreChange(e.target.value)}
                       className="text-center font-bold text-lg h-12"
+                      data-testid="input-white-score"
                     />
                   </div>
                 </div>
-                <div className="flex items-center space-x-2 pb-2">
-                  <Checkbox 
-                    id={`tournament-${match.id}`} 
-                    checked={isTournament}
-                    onCheckedChange={(checked) => onTournamentChange(!!checked)}
-                  />
-                  <Label htmlFor={`tournament-${match.id}`} className="text-xs text-muted-foreground">Tournament Mode (70% rating impact)</Label>
-                </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1 h-10" onClick={onCancelScoring}>Cancel</Button>
-                  <Button className="flex-1 h-10" onClick={onComplete}>Submit Result</Button>
+                  <Button variant="outline" className="flex-1 h-10" onClick={onCancelScoring} data-testid="button-cancel-scoring">Cancel</Button>
+                  <Button className="flex-1 h-10" onClick={onComplete} data-testid="button-submit-score">Submit Result</Button>
                 </div>
               </div>
             ) : (
-              <Button className="w-full h-11 gap-2 rounded-xl" onClick={onScoreClick}>
+              <Button className="w-full h-11 gap-2 rounded-xl" onClick={onScoreClick} data-testid="button-enter-score">
                 <CheckCircle2 className="h-4 w-4" />
                 Enter Final Score
               </Button>
@@ -245,9 +236,25 @@ function MatchCard({
           ) : (
             <div className="flex justify-between items-center pt-2 border-t border-border/30">
                <div className="flex gap-1">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/50 hover:text-destructive" onClick={onDelete}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/50 hover:text-destructive" data-testid="button-delete-match">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Match</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to delete this match? This action cannot be undone and the match history will be permanently removed.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={onDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90" data-testid="button-confirm-delete">Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
               <div className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <LayoutGrid className="h-3 w-3" />

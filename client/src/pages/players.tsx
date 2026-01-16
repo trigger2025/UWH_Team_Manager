@@ -22,6 +22,7 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,6 +32,14 @@ export default function PlayersPage() {
   const { players, updatePlayer, deletePlayer } = useApp();
   const [search, setSearch] = useState("");
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [playerToDelete, setPlayerToDelete] = useState<Player | null>(null);
+  
+  const handleConfirmDelete = () => {
+    if (playerToDelete) {
+      deletePlayer(playerToDelete.id);
+      setPlayerToDelete(null);
+    }
+  };
 
   const filteredPlayers = players
     .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
@@ -159,7 +168,8 @@ export default function PlayersPage() {
                         </DropdownMenuItem>
                         <DropdownMenuItem 
                           className="text-destructive focus:text-destructive focus:bg-destructive/10 gap-2"
-                          onClick={() => deletePlayer(player.id)}
+                          onClick={() => setPlayerToDelete(player)}
+                          data-testid={`button-delete-player-${player.id}`}
                         >
                           <Trash2 className="h-4 w-4" /> Delete
                         </DropdownMenuItem>
@@ -195,6 +205,28 @@ export default function PlayersPage() {
           onOpenChange={(open) => !open && setEditingPlayer(null)} 
         />
       )}
+      
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!playerToDelete} onOpenChange={(open) => !open && setPlayerToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Player</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {playerToDelete?.name}? This action cannot be undone and will remove all their rating history.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-player-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmDelete} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-player-delete"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* FAB */}
       <div className="fixed bottom-24 right-6 z-50">
