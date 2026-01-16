@@ -4,15 +4,20 @@ import { z } from "zod";
 
 // --- Enums ---
 
-export const FormationType = z.enum(["3-3", "1-3-2", "2-3-1", "3-2-1", "2-2-2"]);
+export const FormationType = z.enum(["3-3", "1-3-2"]);
 export type FormationType = z.infer<typeof FormationType>;
 
-export const FormationPosition = z.enum([
-  "Left Wing", "Center Forward", "Right Wing",
-  "Left Mid", "Center Mid", "Right Mid",
-  "Left Back", "Full Back", "Right Back", "Goalie"
+export const FormationPosition33 = z.enum([
+  "Forward", "Centre", "Half Back", "Centre Back"
 ]);
-export type FormationPosition = z.infer<typeof FormationPosition>;
+export const FormationPosition132 = z.enum([
+  "Forward", "Wing", "Centre", "Back"
+]);
+
+export type FormationPosition33 = z.infer<typeof FormationPosition33>;
+export type FormationPosition132 = z.infer<typeof FormationPosition132>;
+
+export type FormationPosition = FormationPosition33 | FormationPosition132;
 
 // --- Core Models ---
 

@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertPlayerSchema, type InsertPlayer, type Player, FormationType, FormationPosition } from "@shared/schema";
+import { 
+  insertPlayerSchema, 
+  type InsertPlayer, 
+  type Player, 
+  FormationType, 
+  FormationPosition33, 
+  FormationPosition132 
+} from "@shared/schema";
 import { useApp } from "@/context/AppContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -40,13 +47,13 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
       formationPreferences: playerToEdit.formationPreferences as any,
     } : {
       name: "",
-      rating: 5,
-      weakHandRating: 3,
+      rating: 500,
+      weakHandRating: 300,
       active: true,
       tags: [],
       formationPreferences: {
-        "3-3": { main: "Center Forward", alternates: [] },
-        "1-3-2": { main: "Goalie", alternates: [] }
+        "3-3": { main: "Forward", alternates: [] },
+        "1-3-2": { main: "Forward", alternates: [] }
       } as any,
     },
   });
@@ -77,11 +84,11 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
     }
   };
 
-  const positions: FormationPosition[] = [
-    "Left Wing", "Center Forward", "Right Wing",
-    "Left Mid", "Center Mid", "Right Mid",
-    "Left Back", "Full Back", "Right Back", "Goalie"
-  ];
+  const getPositionsForFormation = (type: FormationType) => {
+    if (type === "3-3") return Object.values(FormationPosition33.Values);
+    if (type === "1-3-2") return Object.values(FormationPosition132.Values);
+    return [];
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -128,14 +135,14 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
                   <div className="flex justify-between items-center">
                     <Label className="text-muted-foreground">Main Rating</Label>
                     <span className="text-xl font-display font-bold text-primary">
-                      {(form.watch("rating") ?? 5).toFixed(1)}
+                      {form.watch("rating")?.toFixed(0)}
                     </span>
                   </div>
                   <Slider
-                    min={1}
-                    max={10}
-                    step={0.5}
-                    value={[form.watch("rating") ?? 5]}
+                    min={0}
+                    max={1000}
+                    step={10}
+                    value={[form.watch("rating") ?? 500]}
                     onValueChange={(val) => form.setValue("rating", val[0])}
                   />
                 </div>
@@ -144,14 +151,14 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
                   <div className="flex justify-between items-center">
                     <Label className="text-muted-foreground">Weak Hand</Label>
                     <span className="text-xl font-display font-bold text-cyan-400">
-                      {(form.watch("weakHandRating") ?? 3).toFixed(1)}
+                      {form.watch("weakHandRating")?.toFixed(0)}
                     </span>
                   </div>
                   <Slider
-                    min={1}
-                    max={10}
-                    step={0.5}
-                    value={[form.watch("weakHandRating") ?? 3]}
+                    min={0}
+                    max={1000}
+                    step={10}
+                    value={[form.watch("weakHandRating") ?? 300]}
                     onValueChange={(val) => form.setValue("weakHandRating", val[0])}
                   />
                 </div>
@@ -184,7 +191,8 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
               {["3-3", "1-3-2"].map((fType) => {
                 const formation = fType as FormationType;
                 const prefs = (form.watch("formationPreferences") as any) || {};
-                const pref = prefs[formation] || { main: "Center Forward", alternates: [] };
+                const pref = prefs[formation] || { main: "Forward", alternates: [] };
+                const availablePositions = getPositionsForFormation(formation);
                 
                 return (
                   <div key={formation} className="p-4 rounded-lg border border-border/50 bg-background/30 space-y-4">
@@ -209,7 +217,7 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {positions.map(pos => <SelectItem key={pos} value={pos}>{pos}</SelectItem>)}
+                          {availablePositions.map(pos => <SelectItem key={pos} value={pos}>{pos}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -243,7 +251,7 @@ export function AddPlayerDialog({ playerToEdit, open: controlledOpen, onOpenChan
                               <SelectValue placeholder="+ Add Alternate" />
                             </SelectTrigger>
                             <SelectContent>
-                              {positions.map(pos => <SelectItem key={pos} value={pos}>{pos}</SelectItem>)}
+                              {availablePositions.map(pos => <SelectItem key={pos} value={pos}>{pos}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         )}
