@@ -26,7 +26,14 @@ Preferred communication style: Simple, everyday language.
 ## Data Persistence
 - **Primary Storage**: Browser localStorage
 - **Storage Layer**: Custom storage utilities in `client/src/lib/storage.ts` and context provider in `client/src/context/AppContext.tsx`
-- **Data Models**: Players, Matches, Admin Settings, Pool Rotation History, Preset Teams
+- **Data Models**: Players, Matches, Admin Settings, Pool Rotation History, Preset Teams, Saved Tags
+- **Migration**: Storage layer auto-migrates old player data (1-10 ratings scaled to 0-1000, adds weakHandEnabled field)
+
+## Player Features
+- **Ratings**: 0-1000 integer scale with dual slider + text input for precise control
+- **Off-hand Rating**: Optional feature enabled via toggle (weakHandEnabled boolean); when disabled, weakHandRating is null
+- **Tags**: Global savedTags system with autocomplete suggestions; tags are normalized to title-case and deduplicated case-insensitively; unused tags auto-removed when players are updated/deleted
+- **Formation Preferences**: Per-formation position preferences (3-3 and 1-3-2 formations have separate, distinct positions)
 
 ## Key Design Patterns
 - **Mobile-First**: Bottom navigation bar, touch-optimized UI
