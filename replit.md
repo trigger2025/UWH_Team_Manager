@@ -56,6 +56,13 @@ Preferred communication style: Simple, everyday language.
 - **Pool Assignments Map**: Stored in workspace as `poolAssignments: Record<number, PoolAssignment>` where PoolAssignment is "A" | "B"
 - **twoPoolsTeams**: Stores `{ poolA: StandardGeneratedTeams | null, poolB: StandardGeneratedTeams | null }`
 
+## Visibility Settings
+- **Settings Storage**: Stored in context as `visibilitySettings: { showRatings: boolean, showPositions: boolean }`
+- **Default Values**: Both `showRatings` and `showPositions` default to `true`
+- **Settings UI**: Toggle switches in Settings page allow users to hide ratings and/or positions across all views
+- **Applied Views**: Visibility settings are respected in generate.tsx (player selection list, team cards, player rows), results.tsx (match details with player ratings/positions), and players.tsx (rating avatars, off-hand badges, preferred positions section)
+- **Use Case**: Allows coaches/organizers to hide skill ratings during team selection to reduce bias or hide position assignments
+
 ## Key Design Patterns
 - **Mobile-First**: Bottom navigation bar, touch-optimized UI
 - **Offline-First**: All data stored locally, no network dependency for core features

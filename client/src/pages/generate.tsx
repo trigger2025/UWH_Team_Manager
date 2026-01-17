@@ -43,22 +43,31 @@ export default function GeneratePage() {
     generationWorkspace,
     updateWorkspace,
     addToHistory,
+    addToHistoryTwoPools,
     restoreFromHistory,
     clearWorkspace,
-    saveMatchResult
+    saveMatchResult,
+    lockTeams,
+    unlockTeams,
+    visibilitySettings
   } = useApp();
+  
+  const { showRatings, showPositions } = visibilitySettings;
   const [, navigate] = useLocation();
 
   const { 
     mode, 
-    teamFormations, 
+    teamFormations,
+    poolAFormations,
+    poolBFormations,
     selectedPlayerIds, 
     playerOffHandSelections, 
     generatedTeams,
     poolAssignments,
     twoPoolsTeams,
     history,
-    historyIndex
+    historyIndex,
+    teamsLocked
   } = generationWorkspace;
 
   // Filter to only show players (no "active" filter during generation per requirements)
@@ -113,12 +122,27 @@ export default function GeneratePage() {
     updateWorkspace({ playerOffHandSelections: newSelections });
   };
 
-  // Update team formation
+  // Update team formation (standard mode)
   const setTeamFormation = (team: "black" | "white", formation: FormationType) => {
     updateWorkspace({ 
       teamFormations: { ...teamFormations, [team]: formation },
       generatedTeams: null 
     });
+  };
+
+  // Update pool formations (two pools mode)
+  const setPoolFormation = (pool: "A" | "B", team: "black" | "white", formation: FormationType) => {
+    if (pool === "A") {
+      updateWorkspace({
+        poolAFormations: { ...poolAFormations, [team]: formation },
+        twoPoolsTeams: null
+      });
+    } else {
+      updateWorkspace({
+        poolBFormations: { ...poolBFormations, [team]: formation },
+        twoPoolsTeams: null
+      });
+    }
   };
 
   // Calculate pool stats for Two Pools mode
@@ -140,7 +164,7 @@ export default function GeneratePage() {
 
   const handleGenerate = () => {
     if (mode === "two_pools") {
-      // Generate teams for each pool separately
+      // Generate teams for each pool separately using pool-specific formations
       if (unassignedPlayers.length > 0) return; // Block if any unassigned
       
       const poolAPlayerObjs = players.filter(p => poolAssignments[p.id] === "A");
@@ -152,7 +176,7 @@ export default function GeneratePage() {
       if (poolAPlayerObjs.length >= 2) {
         poolATeams = generateTeams(
           poolAPlayerObjs,
-          teamFormations,
+          poolAFormations, // Use Pool A formations
           { playerOffHandSelections }
         );
       }
@@ -160,14 +184,13 @@ export default function GeneratePage() {
       if (poolBPlayerObjs.length >= 2) {
         poolBTeams = generateTeams(
           poolBPlayerObjs,
-          teamFormations,
+          poolBFormations, // Use Pool B formations
           { playerOffHandSelections }
         );
       }
       
-      updateWorkspace({ 
-        twoPoolsTeams: { poolA: poolATeams, poolB: poolBTeams }
-      });
+      const newTwoPoolsTeams = { poolA: poolATeams, poolB: poolBTeams };
+      addToHistoryTwoPools(newTwoPoolsTeams);
     } else {
       // Standard mode
       const selectedPlayers = players.filter(p => selectedPlayerIds.includes(p.id));
@@ -200,23 +223,9 @@ export default function GeneratePage() {
   const handleConfirm = () => {
     if (!generatedTeams) return;
     
-    // Create snapshot with rating information (per-player off-hand already stored in player data)
-    const teamSnapshot = createMatchTeamSnapshot(generatedTeams, players);
-    
-    // Save match result with team snapshots
-    saveMatchResult({
-      date: new Date(),
-      teams: teamSnapshot,
-      completed: false,
-      poolId: null,
-      formation: generatedTeams.black.formation, // Use the team's formation
-      blackScore: null,
-      whiteScore: null,
-      tournamentId: null,
-    });
-    
-    // Clear workspace teams after confirming
-    updateWorkspace({ generatedTeams: null });
+    // Lock teams and navigate to Results - do NOT create match record yet
+    // Match will be created when user enters scores on Results page
+    lockTeams();
     
     // Navigate to results
     navigate("/results");
@@ -225,39 +234,9 @@ export default function GeneratePage() {
   const handleConfirmTwoPools = () => {
     if (!twoPoolsTeams) return;
     
-    const now = new Date();
-    
-    // Create and save matches for each pool with teams
-    if (twoPoolsTeams.poolA) {
-      const snapshotA = createMatchTeamSnapshot(twoPoolsTeams.poolA, players);
-      saveMatchResult({
-        date: now,
-        teams: snapshotA,
-        completed: false,
-        poolId: null,
-        formation: twoPoolsTeams.poolA.black.formation,
-        blackScore: null,
-        whiteScore: null,
-        tournamentId: null,
-      });
-    }
-    
-    if (twoPoolsTeams.poolB) {
-      const snapshotB = createMatchTeamSnapshot(twoPoolsTeams.poolB, players);
-      saveMatchResult({
-        date: new Date(now.getTime() + 1), // Slight offset so they sort correctly
-        teams: snapshotB,
-        completed: false,
-        poolId: null,
-        formation: twoPoolsTeams.poolB.black.formation,
-        blackScore: null,
-        whiteScore: null,
-        tournamentId: null,
-      });
-    }
-    
-    // Clear workspace
-    updateWorkspace({ twoPoolsTeams: null, poolAssignments: {} });
+    // Lock teams and navigate to Results - do NOT create match records yet
+    // Matches will be created when user enters scores on Results page
+    lockTeams();
     
     // Navigate to results
     navigate("/results");
@@ -329,64 +308,179 @@ export default function GeneratePage() {
         </Card>
 
         {/* Per-Team Formation Selectors */}
-        <Card className="border-border/50">
-          <CardHeader className="pb-2 pt-3 px-4">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Team Formations
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-3 space-y-3">
-            {/* Black Team Formation */}
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-primary" />
-                <span className="text-xs font-medium">Black Team</span>
+        {mode === "two_pools" ? (
+          /* Two Pools Mode: Per-Pool Formations */
+          <Card className="border-border/50">
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Pool Formations
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-4">
+              {/* Pool A Formations */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-amber-500/20 border-amber-500 text-amber-300 text-[9px]">Pool A</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pl-2">
+                  {/* Pool A Black */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                      <span className="text-[10px] text-muted-foreground">Black</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                        <Button
+                          key={f}
+                          variant={poolAFormations.black === f ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPoolFormation("A", "black", f)}
+                          className="text-[9px] flex-1 h-7 px-1"
+                          data-testid={`button-formation-poolA-black-${f}`}
+                        >
+                          {f}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Pool A White */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <div className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                      <span className="text-[10px] text-muted-foreground">White</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                        <Button
+                          key={f}
+                          variant={poolAFormations.white === f ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPoolFormation("A", "white", f)}
+                          className="text-[9px] flex-1 h-7 px-1"
+                          data-testid={`button-formation-poolA-white-${f}`}
+                        >
+                          {f}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-2">
-                {(["3-3", "1-3-2"] as FormationType[]).map(f => (
-                  <Button
-                    key={f}
-                    variant={teamFormations.black === f ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setTeamFormation("black", f)}
-                    className="text-xs flex-1"
-                    data-testid={`button-formation-black-${f}`}
-                  >
-                    {FORMATION_LABELS[f]}
-                  </Button>
-                ))}
+              
+              {/* Pool B Formations */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-violet-500/20 border-violet-500 text-violet-300 text-[9px]">Pool B</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pl-2">
+                  {/* Pool B Black */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                      <span className="text-[10px] text-muted-foreground">Black</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                        <Button
+                          key={f}
+                          variant={poolBFormations.black === f ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPoolFormation("B", "black", f)}
+                          className="text-[9px] flex-1 h-7 px-1"
+                          data-testid={`button-formation-poolB-black-${f}`}
+                        >
+                          {f}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Pool B White */}
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1">
+                      <div className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                      <span className="text-[10px] text-muted-foreground">White</span>
+                    </div>
+                    <div className="flex gap-1">
+                      {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                        <Button
+                          key={f}
+                          variant={poolBFormations.white === f ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPoolFormation("B", "white", f)}
+                          className="text-[9px] flex-1 h-7 px-1"
+                          data-testid={`button-formation-poolB-white-${f}`}
+                        >
+                          {f}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <p className="text-[9px] text-muted-foreground">
-                Positions: {getUniquePositions(teamFormations.black).join(", ")}
-              </p>
-            </div>
-            
-            {/* White Team Formation */}
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-cyan-400" />
-                <span className="text-xs font-medium">White Team</span>
+            </CardContent>
+          </Card>
+        ) : (
+          /* Standard Mode: Per-Team Formations */
+          <Card className="border-border/50">
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Team Formations
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-3">
+              {/* Black Team Formation */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-primary" />
+                  <span className="text-xs font-medium">Black Team</span>
+                </div>
+                <div className="flex gap-2">
+                  {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                    <Button
+                      key={f}
+                      variant={teamFormations.black === f ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTeamFormation("black", f)}
+                      className="text-xs flex-1"
+                      data-testid={`button-formation-black-${f}`}
+                    >
+                      {FORMATION_LABELS[f]}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-[9px] text-muted-foreground">
+                  Positions: {getUniquePositions(teamFormations.black).join(", ")}
+                </p>
               </div>
-              <div className="flex gap-2">
-                {(["3-3", "1-3-2"] as FormationType[]).map(f => (
-                  <Button
-                    key={f}
-                    variant={teamFormations.white === f ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setTeamFormation("white", f)}
-                    className="text-xs flex-1"
-                    data-testid={`button-formation-white-${f}`}
-                  >
-                    {FORMATION_LABELS[f]}
-                  </Button>
-                ))}
+              
+              {/* White Team Formation */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-cyan-400" />
+                  <span className="text-xs font-medium">White Team</span>
+                </div>
+                <div className="flex gap-2">
+                  {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                    <Button
+                      key={f}
+                      variant={teamFormations.white === f ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTeamFormation("white", f)}
+                      className="text-xs flex-1"
+                      data-testid={`button-formation-white-${f}`}
+                    >
+                      {FORMATION_LABELS[f]}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-[9px] text-muted-foreground">
+                  Positions: {getUniquePositions(teamFormations.white).join(", ")}
+                </p>
               </div>
-              <p className="text-[9px] text-muted-foreground">
-                Positions: {getUniquePositions(teamFormations.white).join(", ")}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         <AnimatePresence mode="wait">
           {!hasGeneratedTeams ? (
@@ -450,15 +544,22 @@ export default function GeneratePage() {
                             className="flex items-center gap-2 flex-1 cursor-pointer"
                             onClick={() => togglePlayer(player.id)}
                           >
-                            <div className={`
-                              h-7 w-7 rounded-md flex items-center justify-center font-bold text-[10px]
-                              ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}
-                            `}>
-                              {usingOffHand ? player.weakHandRating : player.rating}
-                            </div>
+                            {showRatings && (
+                              <div className={`
+                                h-7 w-7 rounded-md flex items-center justify-center font-bold text-[10px]
+                                ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}
+                              `}>
+                                {usingOffHand ? player.weakHandRating : player.rating}
+                              </div>
+                            )}
                             <div className="flex flex-col">
                               <span className="text-sm font-medium">{player.name}</span>
-                              {hasOffHand && (
+                              {showRatings && hasOffHand && isSelected && (
+                                <span className="text-[9px] text-muted-foreground">
+                                  Using: {usingOffHand ? 'Off-hand' : 'Main'} ({usingOffHand ? player.weakHandRating : player.rating})
+                                </span>
+                              )}
+                              {showRatings && hasOffHand && !isSelected && (
                                 <span className="text-[9px] text-muted-foreground">
                                   Main: {player.rating} / Off: {player.weakHandRating}
                                 </span>
@@ -467,7 +568,7 @@ export default function GeneratePage() {
                           </div>
                           
                           <div className="flex items-center gap-2">
-                            {/* Per-player off-hand toggle - only visible for players with off-hand enabled */}
+                            {/* Per-player off-hand toggle - only visible for selected players with off-hand enabled */}
                             {hasOffHand && isSelected && (
                               <Button
                                 variant={usingOffHand ? "default" : "outline"}
@@ -479,8 +580,7 @@ export default function GeneratePage() {
                                 }}
                                 data-testid={`button-offhand-${player.id}`}
                               >
-                                <Hand className="h-3 w-3" />
-                                Off
+                                {usingOffHand ? 'Off-hand' : 'Main'}
                               </Button>
                             )}
                             
@@ -579,6 +679,40 @@ export default function GeneratePage() {
               animate={{ opacity: 1, scale: 1 }}
               className="space-y-4"
             >
+              {/* History Navigation for Two Pools */}
+              {history.length > 1 && (
+                <div className="flex items-center justify-between px-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={historyIndex >= history.length - 1}
+                    onClick={() => restoreFromHistory(historyIndex + 1)}
+                    className="text-xs gap-1 h-7"
+                    data-testid="button-history-prev-twopools"
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                    Older
+                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <History className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">
+                      {historyIndex + 1} / {history.length}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={historyIndex <= 0}
+                    onClick={() => restoreFromHistory(historyIndex - 1)}
+                    className="text-xs gap-1 h-7"
+                    data-testid="button-history-next-twopools"
+                  >
+                    Newer
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+
               {/* Pool A Teams */}
               {twoPoolsTeams.poolA && (
                 <div className="space-y-3">
@@ -592,6 +726,8 @@ export default function GeneratePage() {
                       team={twoPoolsTeams.poolA.black}
                       colorClass="primary"
                       onMovePlayer={(playerId) => handleMovePlayer(playerId, "White")}
+                      showRatings={showRatings}
+                      showPositions={showPositions}
                     />
                     <div className="flex items-center justify-center">
                       <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
@@ -602,6 +738,8 @@ export default function GeneratePage() {
                       team={twoPoolsTeams.poolA.white}
                       colorClass="cyan-400"
                       onMovePlayer={(playerId) => handleMovePlayer(playerId, "Black")}
+                      showRatings={showRatings}
+                      showPositions={showPositions}
                     />
                   </div>
                 </div>
@@ -620,6 +758,8 @@ export default function GeneratePage() {
                       team={twoPoolsTeams.poolB.black}
                       colorClass="primary"
                       onMovePlayer={(playerId) => handleMovePlayer(playerId, "White")}
+                      showRatings={showRatings}
+                      showPositions={showPositions}
                     />
                     <div className="flex items-center justify-center">
                       <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
@@ -630,6 +770,8 @@ export default function GeneratePage() {
                       team={twoPoolsTeams.poolB.white}
                       colorClass="cyan-400"
                       onMovePlayer={(playerId) => handleMovePlayer(playerId, "Black")}
+                      showRatings={showRatings}
+                      showPositions={showPositions}
                     />
                   </div>
                 </div>
@@ -715,6 +857,8 @@ export default function GeneratePage() {
                   team={generatedTeams.black}
                   colorClass="primary"
                   onMovePlayer={(playerId) => handleMovePlayer(playerId, "White")}
+                  showRatings={showRatings}
+                  showPositions={showPositions}
                 />
 
                 <div className="flex items-center justify-center">
@@ -728,6 +872,8 @@ export default function GeneratePage() {
                   team={generatedTeams.white}
                   colorClass="cyan-400"
                   onMovePlayer={(playerId) => handleMovePlayer(playerId, "Black")}
+                  showRatings={showRatings}
+                  showPositions={showPositions}
                 />
               </div>
 
@@ -776,9 +922,11 @@ interface TeamCardProps {
   team: GeneratedTeam;
   colorClass: string;
   onMovePlayer: (playerId: number) => void;
+  showRatings?: boolean;
+  showPositions?: boolean;
 }
 
-function TeamCard({ team, colorClass, onMovePlayer }: TeamCardProps) {
+function TeamCard({ team, colorClass, onMovePlayer, showRatings = true, showPositions = true }: TeamCardProps) {
   const isBlack = team.color === "Black";
   const bgColor = isBlack ? "bg-primary/10" : "bg-cyan-400/10";
   const borderColor = isBlack ? "border-primary/20" : "border-cyan-400/20";
@@ -796,9 +944,11 @@ function TeamCard({ team, colorClass, onMovePlayer }: TeamCardProps) {
           <div className={`h-2.5 w-2.5 rounded-full ${dotColor}`} />
           <h3 className={`font-bold text-sm ${textColor}`}>Team {team.color}</h3>
         </div>
-        <Badge variant="outline" className="bg-background/50 text-[10px]">
-          Avg: {avgRating}
-        </Badge>
+        {showRatings && (
+          <Badge variant="outline" className="bg-background/50 text-[10px]">
+            Avg: {avgRating}
+          </Badge>
+        )}
       </div>
       <CardContent className="p-0">
         {team.players.map((player, i) => (
@@ -808,6 +958,8 @@ function TeamCard({ team, colorClass, onMovePlayer }: TeamCardProps) {
             index={i}
             isLast={i === team.players.length - 1}
             onMove={() => onMovePlayer(player.id)}
+            showRatings={showRatings}
+            showPositions={showPositions}
           />
         ))}
         {team.players.length === 0 && (
@@ -825,27 +977,30 @@ interface PlayerRowProps {
   index: number;
   isLast: boolean;
   onMove: () => void;
+  showRatings?: boolean;
+  showPositions?: boolean;
 }
 
-function PlayerRow({ player, index, isLast, onMove }: PlayerRowProps) {
+function PlayerRow({ player, index, isLast, onMove, showRatings = true, showPositions = true }: PlayerRowProps) {
   return (
     <div className={`flex items-center justify-between px-3 py-2 ${!isLast ? 'border-b border-border/30' : ''}`}>
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <span className="text-[10px] font-mono text-muted-foreground/60 w-4">#{index+1}</span>
         <div className="flex flex-col min-w-0">
           <span className="text-sm font-medium truncate">{player.name}</span>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] text-muted-foreground">{player.ratingUsed}</span>
-            {player.usedOffHand && (
-              <Hand className="h-2.5 w-2.5 text-cyan-500" />
-            )}
-          </div>
+          {showRatings && (
+            <span className="text-[9px] text-muted-foreground">
+              Rating: {player.ratingUsed} {player.usedOffHand ? '(Off-hand)' : '(Main)'}
+            </span>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="text-[9px] font-bold uppercase tracking-tight">
-          {player.assignedPosition}
-        </Badge>
+        {showPositions && (
+          <Badge variant="secondary" className="text-[9px] font-bold uppercase tracking-tight">
+            {player.assignedPosition}
+          </Badge>
+        )}
         <Button
           variant="ghost"
           size="icon"

@@ -123,7 +123,10 @@ export interface PlayerRatingSnapshot {
   usedOffHand: boolean;
   mainRating: number;
   offHandRating: number | null;
-  ratingChange?: number;
+  // Rating tracking for reversal support
+  ratingBefore: number; // Rating value before match (main or off-hand based on usedOffHand)
+  ratingAfter?: number; // Rating value after match (set when completed)
+  ratingDelta?: number; // Change applied (+/-)
   team: "Black" | "White";
   position: string;
 }
@@ -179,7 +182,10 @@ export interface TeamFormations {
 // Generation workspace state (persisted globally)
 export interface GenerationWorkspace {
   mode: GenerationMode;
-  teamFormations: TeamFormations; // Per-team formations
+  teamFormations: TeamFormations; // Per-team formations for standard mode
+  // Per-pool formations for 2 pools mode
+  poolAFormations: TeamFormations;
+  poolBFormations: TeamFormations;
   selectedPlayerIds: number[];
   playerOffHandSelections: PlayerOffHandSelection; // Per-player off-hand toggle
   generatedTeams: { black: GeneratedTeam; white: GeneratedTeam } | null;
@@ -188,22 +194,40 @@ export interface GenerationWorkspace {
   twoPoolsTeams: TwoPoolsGeneratedTeams | null;
   history: GeneratedTeamsSnapshot[];
   historyIndex: number; // Current position in history (-1 = none)
-  // Pending match for Results page (created on Confirm but not saved until scores entered)
+  // Pending matches for Results page (created on Confirm but not saved until scores entered)
   pendingMatch: PendingMatch | null;
+  pendingMatchPoolA: PendingMatch | null; // For 2 pools mode
+  pendingMatchPoolB: PendingMatch | null; // For 2 pools mode
+  // Whether teams are locked (confirmed but not yet saved)
+  teamsLocked: boolean;
 }
 
 // Pending match state (teams locked, waiting for scores)
 export interface PendingMatch {
   teams: MatchTeamSnapshot;
   createdAt: string;
+  poolLabel?: "A" | "B"; // For 2 pools mode
+}
+
+// Visibility settings for UI
+export interface VisibilitySettings {
+  showRatings: boolean;
+  showPositions: boolean;
 }
 
 export interface GeneratedTeamsSnapshot {
   id: number;
   timestamp: string;
-  teams: { black: GeneratedTeam; white: GeneratedTeam };
+  // For standard mode
+  teams?: { black: GeneratedTeam; white: GeneratedTeam };
+  // For two pools mode
+  twoPoolsTeams?: TwoPoolsGeneratedTeams;
+  poolAssignments?: Record<number, PoolAssignment>;
   mode: GenerationMode;
   teamFormations: TeamFormations;
+  // Per-pool formations for 2 pools mode
+  poolAFormations?: TeamFormations;
+  poolBFormations?: TeamFormations;
   playerOffHandSelections: PlayerOffHandSelection;
 }
 

@@ -1,4 +1,4 @@
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, InsertPlayer, GenerationWorkspace, GeneratedTeamsSnapshot } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, InsertPlayer, GenerationWorkspace, GeneratedTeamsSnapshot, VisibilitySettings } from "@shared/schema";
 
 export const STORAGE_KEYS = {
   PLAYERS: "uwh_players",
@@ -8,11 +8,19 @@ export const STORAGE_KEYS = {
   PRESET_TEAMS: "uwh_preset_teams",
   SAVED_TAGS: "uwh_saved_tags",
   GENERATION_WORKSPACE: "uwh_generation_workspace",
+  VISIBILITY_SETTINGS: "uwh_visibility_settings",
 } as const;
+
+export const DEFAULT_VISIBILITY_SETTINGS: import("@shared/schema").VisibilitySettings = {
+  showRatings: true,
+  showPositions: true,
+};
 
 export const DEFAULT_GENERATION_WORKSPACE: GenerationWorkspace = {
   mode: "standard",
   teamFormations: { black: "3-3", white: "3-3" },
+  poolAFormations: { black: "3-3", white: "3-3" },
+  poolBFormations: { black: "3-3", white: "3-3" },
   selectedPlayerIds: [],
   playerOffHandSelections: {},
   generatedTeams: null,
@@ -20,7 +28,10 @@ export const DEFAULT_GENERATION_WORKSPACE: GenerationWorkspace = {
   twoPoolsTeams: null,
   history: [],
   historyIndex: -1,
-  pendingMatch: null
+  pendingMatch: null,
+  pendingMatchPoolA: null,
+  pendingMatchPoolB: null,
+  teamsLocked: false
 };
 
 // Migrate legacy workspace data to new schema
@@ -37,12 +48,27 @@ function migrateWorkspace(saved: any): GenerationWorkspace {
   if (saved.twoPoolsTeams) migrated.twoPoolsTeams = saved.twoPoolsTeams;
   if (saved.historyIndex !== undefined) migrated.historyIndex = saved.historyIndex;
   if (saved.pendingMatch) migrated.pendingMatch = saved.pendingMatch;
+  if (saved.pendingMatchPoolA) migrated.pendingMatchPoolA = saved.pendingMatchPoolA;
+  if (saved.pendingMatchPoolB) migrated.pendingMatchPoolB = saved.pendingMatchPoolB;
+  if (saved.teamsLocked !== undefined) migrated.teamsLocked = saved.teamsLocked;
   
   // Migrate formation -> teamFormations
   if (saved.teamFormations) {
     migrated.teamFormations = saved.teamFormations;
   } else if (saved.formation) {
     migrated.teamFormations = { black: saved.formation, white: saved.formation };
+  }
+  
+  // Per-pool formations
+  if (saved.poolAFormations) {
+    migrated.poolAFormations = saved.poolAFormations;
+  } else {
+    migrated.poolAFormations = { ...migrated.teamFormations };
+  }
+  if (saved.poolBFormations) {
+    migrated.poolBFormations = saved.poolBFormations;
+  } else {
+    migrated.poolBFormations = { ...migrated.teamFormations };
   }
   
   // Migrate useOffHandRatings -> playerOffHandSelections
@@ -58,9 +84,13 @@ function migrateWorkspace(saved: any): GenerationWorkspace {
       id: snapshot.id,
       timestamp: snapshot.timestamp,
       teams: snapshot.teams,
+      twoPoolsTeams: snapshot.twoPoolsTeams,
+      poolAssignments: snapshot.poolAssignments,
       mode: snapshot.mode || "standard",
       teamFormations: snapshot.teamFormations || 
         (snapshot.formation ? { black: snapshot.formation, white: snapshot.formation } : { black: "3-3", white: "3-3" }),
+      poolAFormations: snapshot.poolAFormations,
+      poolBFormations: snapshot.poolBFormations,
       playerOffHandSelections: snapshot.playerOffHandSelections || {}
     }));
   }
@@ -76,6 +106,7 @@ export interface AppData {
   presetTeams: PresetTeam[];
   savedTags: string[];
   generationWorkspace: GenerationWorkspace;
+  visibilitySettings: VisibilitySettings;
 }
 
 const generateId = () => Math.floor(Math.random() * 1000000);
@@ -122,6 +153,7 @@ export const storage = {
       presetTeams: this.read<PresetTeam[]>(STORAGE_KEYS.PRESET_TEAMS, []),
       savedTags: this.read<string[]>(STORAGE_KEYS.SAVED_TAGS, []),
       generationWorkspace: mergedWorkspace,
+      visibilitySettings: this.read<VisibilitySettings>(STORAGE_KEYS.VISIBILITY_SETTINGS, DEFAULT_VISIBILITY_SETTINGS),
     };
   },
 
@@ -133,6 +165,7 @@ export const storage = {
     if (data.presetTeams) this.write(STORAGE_KEYS.PRESET_TEAMS, data.presetTeams);
     if (data.savedTags !== undefined) this.write(STORAGE_KEYS.SAVED_TAGS, data.savedTags);
     if (data.generationWorkspace) this.write(STORAGE_KEYS.GENERATION_WORKSPACE, data.generationWorkspace);
+    if (data.visibilitySettings) this.write(STORAGE_KEYS.VISIBILITY_SETTINGS, data.visibilitySettings);
   },
 
   clearAllData(): void {

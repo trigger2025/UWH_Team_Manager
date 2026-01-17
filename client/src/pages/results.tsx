@@ -15,19 +15,131 @@ import {
   LayoutGrid,
   CalendarDays,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Clock,
+  X
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Match, Player } from "@shared/schema";
+import { Match, Player, GeneratedTeam } from "@shared/schema";
+import { createMatchTeamSnapshot } from "@/lib/team-logic";
+import { useLocation } from "wouter";
 
 export default function ResultsPage() {
-  const { matchResults, completeMatch, deleteMatchResult } = useApp();
+  const { 
+    matchResults, 
+    completeMatch, 
+    deleteMatchResultWithReversal, 
+    players,
+    generationWorkspace,
+    saveMatchResult,
+    unlockTeams,
+    updateWorkspace,
+    visibilitySettings
+  } = useApp();
+  const [, navigate] = useLocation();
+  
+  const { showRatings, showPositions } = visibilitySettings;
+  
+  const { teamsLocked, generatedTeams, twoPoolsTeams, mode } = generationWorkspace;
   const [scoringMatchId, setScoringMatchId] = useState<number | null>(null);
   const [blackScore, setBlackScore] = useState("");
   const [whiteScore, setWhiteScore] = useState("");
+  
+  // Pending match scores (for locked teams from Generate page)
+  const [pendingBlackScore, setPendingBlackScore] = useState("");
+  const [pendingWhiteScore, setPendingWhiteScore] = useState("");
+  const [pendingPoolABlackScore, setPendingPoolABlackScore] = useState("");
+  const [pendingPoolAWhiteScore, setPendingPoolAWhiteScore] = useState("");
+  const [pendingPoolBBlackScore, setPendingPoolBBlackScore] = useState("");
+  const [pendingPoolBWhiteScore, setPendingPoolBWhiteScore] = useState("");
+
+  // Handle saving a pending match (standard mode)
+  const handleSavePendingMatch = () => {
+    if (!generatedTeams) return;
+    
+    const b = parseInt(pendingBlackScore);
+    const w = parseInt(pendingWhiteScore);
+    if (isNaN(b) || isNaN(w)) return;
+    
+    // Create snapshot and save match
+    const teamSnapshot = createMatchTeamSnapshot(generatedTeams, players);
+    const matchId = saveMatchResult({
+      date: new Date(),
+      teams: teamSnapshot,
+      completed: false,
+      poolId: null,
+      formation: generatedTeams.black.formation,
+      blackScore: null,
+      whiteScore: null,
+      tournamentId: null,
+    });
+    
+    // Complete the match immediately with the returned ID
+    completeMatch(matchId, b, w, false);
+    
+    // Clear pending state
+    unlockTeams();
+    updateWorkspace({ generatedTeams: null });
+    setPendingBlackScore("");
+    setPendingWhiteScore("");
+  };
+
+  // Handle saving pending two pools matches
+  const handleSavePendingPoolMatch = (pool: "A" | "B") => {
+    if (!twoPoolsTeams) return;
+    
+    const teams = pool === "A" ? twoPoolsTeams.poolA : twoPoolsTeams.poolB;
+    if (!teams) return;
+    
+    const bScore = pool === "A" ? pendingPoolABlackScore : pendingPoolBBlackScore;
+    const wScore = pool === "A" ? pendingPoolAWhiteScore : pendingPoolBWhiteScore;
+    const b = parseInt(bScore);
+    const w = parseInt(wScore);
+    if (isNaN(b) || isNaN(w)) return;
+    
+    // Create snapshot and save match
+    const teamSnapshot = createMatchTeamSnapshot(teams, players);
+    const matchId = saveMatchResult({
+      date: new Date(),
+      teams: teamSnapshot,
+      completed: false,
+      poolId: null,
+      formation: teams.black.formation,
+      blackScore: null,
+      whiteScore: null,
+      tournamentId: null,
+    });
+    
+    // Complete the match immediately with the returned ID
+    completeMatch(matchId, b, w, false);
+    
+    // Clear that pool's teams
+    if (pool === "A") {
+      updateWorkspace({ twoPoolsTeams: { ...twoPoolsTeams, poolA: null } });
+      setPendingPoolABlackScore("");
+      setPendingPoolAWhiteScore("");
+    } else {
+      updateWorkspace({ twoPoolsTeams: { ...twoPoolsTeams, poolB: null } });
+      setPendingPoolBBlackScore("");
+      setPendingPoolBWhiteScore("");
+    }
+    
+    // If both pools are now cleared, unlock teams
+    const otherPool = pool === "A" ? twoPoolsTeams.poolB : twoPoolsTeams.poolA;
+    if (!otherPool) {
+      unlockTeams();
+      updateWorkspace({ twoPoolsTeams: null, poolAssignments: {} });
+    }
+  };
+
+  // Handle canceling pending match
+  const handleCancelPending = () => {
+    unlockTeams();
+    navigate("/generate");
+  };
 
   const handleComplete = (id: number) => {
     const b = parseInt(blackScore);
@@ -65,8 +177,181 @@ export default function ResultsPage() {
           </Badge>
         </div>
 
+        {/* Pending Matches from Generate page */}
+        {teamsLocked && (
+          <div className="space-y-4">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500 px-1 flex items-center gap-2">
+              <Clock className="h-3 w-3" />
+              Pending Matches - Enter Scores
+            </h3>
+            
+            {mode === "two_pools" && twoPoolsTeams ? (
+              <>
+                {/* Pool A Pending */}
+                {twoPoolsTeams.poolA && (
+                  <Card className="border-amber-500/30 bg-amber-500/5">
+                    <CardHeader className="pb-2 pt-3 px-4 flex flex-row items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30">Pool A</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {twoPoolsTeams.poolA.black.players.length} vs {twoPoolsTeams.poolA.white.players.length} players
+                        </span>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <Label className="text-[10px] text-muted-foreground">Black</Label>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            value={pendingPoolABlackScore}
+                            onChange={(e) => setPendingPoolABlackScore(e.target.value)}
+                            className="h-10 text-center text-lg font-bold"
+                            data-testid="input-pending-pool-a-black"
+                          />
+                        </div>
+                        <span className="text-muted-foreground font-bold">-</span>
+                        <div className="flex-1">
+                          <Label className="text-[10px] text-muted-foreground">White</Label>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            value={pendingPoolAWhiteScore}
+                            onChange={(e) => setPendingPoolAWhiteScore(e.target.value)}
+                            className="h-10 text-center text-lg font-bold"
+                            data-testid="input-pending-pool-a-white"
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleSavePendingPoolMatch("A")}
+                          disabled={!pendingPoolABlackScore || !pendingPoolAWhiteScore}
+                          className="h-10"
+                          data-testid="button-save-pool-a"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+                
+                {/* Pool B Pending */}
+                {twoPoolsTeams.poolB && (
+                  <Card className="border-violet-500/30 bg-violet-500/5">
+                    <CardHeader className="pb-2 pt-3 px-4 flex flex-row items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-violet-500/20 text-violet-500 border-violet-500/30">Pool B</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {twoPoolsTeams.poolB.black.players.length} vs {twoPoolsTeams.poolB.white.players.length} players
+                        </span>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <Label className="text-[10px] text-muted-foreground">Black</Label>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            value={pendingPoolBBlackScore}
+                            onChange={(e) => setPendingPoolBBlackScore(e.target.value)}
+                            className="h-10 text-center text-lg font-bold"
+                            data-testid="input-pending-pool-b-black"
+                          />
+                        </div>
+                        <span className="text-muted-foreground font-bold">-</span>
+                        <div className="flex-1">
+                          <Label className="text-[10px] text-muted-foreground">White</Label>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            value={pendingPoolBWhiteScore}
+                            onChange={(e) => setPendingPoolBWhiteScore(e.target.value)}
+                            className="h-10 text-center text-lg font-bold"
+                            data-testid="input-pending-pool-b-white"
+                          />
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleSavePendingPoolMatch("B")}
+                          disabled={!pendingPoolBBlackScore || !pendingPoolBWhiteScore}
+                          className="h-10"
+                          data-testid="button-save-pool-b"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : generatedTeams ? (
+              /* Standard Mode Pending Match */
+              <Card className="border-amber-500/30 bg-amber-500/5">
+                <CardHeader className="pb-2 pt-3 px-4 flex flex-row items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30">Pending</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {generatedTeams.black.players.length} vs {generatedTeams.white.players.length} players
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="px-4 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <Label className="text-[10px] text-muted-foreground">Black</Label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={pendingBlackScore}
+                        onChange={(e) => setPendingBlackScore(e.target.value)}
+                        className="h-10 text-center text-lg font-bold"
+                        data-testid="input-pending-black"
+                      />
+                    </div>
+                    <span className="text-muted-foreground font-bold">-</span>
+                    <div className="flex-1">
+                      <Label className="text-[10px] text-muted-foreground">White</Label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={pendingWhiteScore}
+                        onChange={(e) => setPendingWhiteScore(e.target.value)}
+                        className="h-10 text-center text-lg font-bold"
+                        data-testid="input-pending-white"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={handleSavePendingMatch}
+                      disabled={!pendingBlackScore || !pendingWhiteScore}
+                      className="h-10"
+                      data-testid="button-save-pending"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+            
+            {/* Cancel button */}
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handleCancelPending}
+              data-testid="button-cancel-pending"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Cancel and Return to Generate
+            </Button>
+          </div>
+        )}
+
         <AnimatePresence mode="popLayout">
-          {matchResults.length === 0 ? (
+          {matchResults.length === 0 && !teamsLocked ? (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -106,7 +391,7 @@ export default function ResultsPage() {
                       onBlackScoreChange={setBlackScore}
                       onWhiteScoreChange={setWhiteScore}
                       onComplete={() => handleComplete(match.id)}
-                      onDelete={() => deleteMatchResult(match.id)}
+                      onDelete={() => deleteMatchResultWithReversal(match.id)}
                     />
                   </motion.div>
                 ))}
@@ -173,23 +458,63 @@ function MatchCard({
           <CollapsibleContent>
             <div className="grid grid-cols-2 gap-4 py-2 border-t border-border/30 mt-2">
               <div>
-                <h4 className="text-[10px] font-bold uppercase text-primary mb-2">Team Black</h4>
-                <ul className="text-xs space-y-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <h4 className="text-[10px] font-bold uppercase text-primary">Black</h4>
+                  {teams.black.formation && (
+                    <Badge variant="outline" className="text-[8px] px-1 py-0">{teams.black.formation}</Badge>
+                  )}
+                </div>
+                <ul className="text-xs space-y-1.5">
                   {teams.black.players.map((p: any, idx: number) => (
-                    <li key={p.playerId ?? p.id ?? idx} className="opacity-80 flex justify-between">
-                      <span>{p.playerName ?? p.name}</span>
-                      <span className="text-[8px] opacity-50">{p.position ?? p.assignedPosition}</span>
+                    <li key={p.playerId ?? p.id ?? idx} className="flex flex-col gap-0.5">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">{p.playerName ?? p.name}</span>
+                        {showPositions && (
+                          <Badge variant="secondary" className="text-[7px] px-1 py-0">{p.position ?? p.assignedPosition}</Badge>
+                        )}
+                      </div>
+                      {showRatings && (
+                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+                          <span>{p.ratingUsed || p.rating}</span>
+                          {p.usedOffHand && <span className="text-cyan-400">(Off-hand)</span>}
+                          {p.ratingDelta !== undefined && p.ratingDelta !== 0 && (
+                            <span className={p.ratingDelta > 0 ? 'text-green-400' : 'text-red-400'}>
+                              {p.ratingDelta > 0 ? '+' : ''}{p.ratingDelta}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
               </div>
               <div>
-                <h4 className="text-[10px] font-bold uppercase text-cyan-400 mb-2">Team White</h4>
-                <ul className="text-xs space-y-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <h4 className="text-[10px] font-bold uppercase text-cyan-400">White</h4>
+                  {teams.white.formation && (
+                    <Badge variant="outline" className="text-[8px] px-1 py-0">{teams.white.formation}</Badge>
+                  )}
+                </div>
+                <ul className="text-xs space-y-1.5">
                   {teams.white.players.map((p: any, idx: number) => (
-                    <li key={p.playerId ?? p.id ?? idx} className="opacity-80 flex justify-between">
-                      <span>{p.playerName ?? p.name}</span>
-                      <span className="text-[8px] opacity-50">{p.position ?? p.assignedPosition}</span>
+                    <li key={p.playerId ?? p.id ?? idx} className="flex flex-col gap-0.5">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">{p.playerName ?? p.name}</span>
+                        {showPositions && (
+                          <Badge variant="secondary" className="text-[7px] px-1 py-0">{p.position ?? p.assignedPosition}</Badge>
+                        )}
+                      </div>
+                      {showRatings && (
+                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+                          <span>{p.ratingUsed || p.rating}</span>
+                          {p.usedOffHand && <span className="text-cyan-400">(Off-hand)</span>}
+                          {p.ratingDelta !== undefined && p.ratingDelta !== 0 && (
+                            <span className={p.ratingDelta > 0 ? 'text-green-400' : 'text-red-400'}>
+                              {p.ratingDelta > 0 ? '+' : ''}{p.ratingDelta}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -246,7 +571,7 @@ function MatchCard({
                     <AlertDialogHeader>
                       <AlertDialogTitle>Delete Match</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Are you sure you want to delete this match? This action cannot be undone and the match history will be permanently removed.
+                        Are you sure you want to delete this match? All rating changes from this match will be reversed, and player win/loss/draw stats will be updated accordingly.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

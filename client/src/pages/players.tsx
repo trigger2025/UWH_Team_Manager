@@ -29,7 +29,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Player } from "@shared/schema";
 
 export default function PlayersPage() {
-  const { players, updatePlayer, deletePlayer } = useApp();
+  const { players, updatePlayer, deletePlayer, visibilitySettings } = useApp();
+  const { showRatings, showPositions } = visibilitySettings;
   const [search, setSearch] = useState("");
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [playerToDelete, setPlayerToDelete] = useState<Player | null>(null);
@@ -112,13 +113,15 @@ export default function PlayersPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex gap-4">
                     {/* Rating Avatar */}
-                    <div className={`
-                      h-12 w-12 rounded-xl flex flex-col items-center justify-center border border-white/10
-                      ${player.active ? 'bg-gradient-to-br from-primary/30 to-primary/10 text-primary' : 'bg-secondary text-muted-foreground'}
-                    `}>
-                      <span className="text-xl font-bold leading-none">{player.rating.toFixed(0)}</span>
-                      <span className="text-[10px] uppercase font-bold tracking-tighter opacity-60">SR</span>
-                    </div>
+                    {showRatings && (
+                      <div className={`
+                        h-12 w-12 rounded-xl flex flex-col items-center justify-center border border-white/10
+                        ${player.active ? 'bg-gradient-to-br from-primary/30 to-primary/10 text-primary' : 'bg-secondary text-muted-foreground'}
+                      `}>
+                        <span className="text-xl font-bold leading-none">{player.rating.toFixed(0)}</span>
+                        <span className="text-[10px] uppercase font-bold tracking-tighter opacity-60">SR</span>
+                      </div>
+                    )}
                     
                     <div>
                       <h3 className="font-bold text-lg leading-tight flex items-center gap-2">
@@ -128,7 +131,7 @@ export default function PlayersPage() {
                       
                       {/* Stats Badges */}
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        {player.weakHandEnabled && player.weakHandRating !== null && (
+                        {showRatings && player.weakHandEnabled && player.weakHandRating !== null && (
                           <div className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full border border-white/5">
                             <HandMetal className="h-2.5 w-2.5" />
                             {player.weakHandRating}
@@ -179,7 +182,7 @@ export default function PlayersPage() {
                 </div>
 
                 {/* Preferred Positions Quick View */}
-                {player.active && (
+                {showPositions && player.active && (
                   <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-2 gap-2">
                     <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
                       <Sword className="h-3 w-3 text-primary/60" />

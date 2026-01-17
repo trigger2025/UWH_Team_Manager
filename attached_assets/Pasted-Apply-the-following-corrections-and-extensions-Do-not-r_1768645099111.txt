@@ -1,0 +1,66 @@
+Apply the following corrections and extensions. Do not remove existing logic unless specified.
+
+1) Formation Scoping Fix
+- Formation must be stored per (poolId, teamId).
+- Each team card must have its own formation selector.
+- Changing formation for one team must not affect any other team in any pool.
+- Match results must store the formation used per team.
+
+2) Off-hand Rating UI & Logic Fix
+- Show off-hand toggle ONLY for players with weakHandEnabled and weakHandRating.
+- Replace ambiguous icon UI with explicit text:
+  - “Rating used: Main” / “Rating used: Off-hand”.
+- Toggling must:
+  - Change which rating is used for generation.
+  - Change which rating is adjusted after results.
+- Store which rating was used per player in match snapshots.
+
+3) Generated Teams History (2 Pools Support)
+- Generated teams history must work for both 1 and 2 pool modes.
+- Add an explicit “History” control independent of Generate/Re-roll.
+- Allow reloading any history entry into the active workspace.
+- Navigating away must not clear the active generated state.
+
+4) Pool Reassignment
+- In 2 pool mode, allow manual reassignment of players between Pool A and Pool B:
+  - Before generation
+  - After generation
+- Generation must respect these manual pool assignments.
+
+5) Button Feedback & Navigation
+- All buttons must show pressed and disabled states.
+- Confirm Teams must:
+  - Give immediate visual feedback
+  - Lock teams
+  - Navigate to Match Results
+  - NOT create a match result
+
+6) Match Results Model Expansion
+- Extend match results to store:
+  - Teams and pools
+  - Formation per team
+  - Player ratings at time of match
+  - Whether off-hand was used
+  - Rating before and after
+  - Rating delta per player
+- Display in Results:
+  - Formation per team
+  - Player ratings used
+  - Rating changes (+/-)
+
+7) Match Result Deletion & Reversal
+- Allow deletion of match results even if scores are incomplete.
+- Deleting a match result must:
+  - Reverse all rating changes using stored deltas.
+- Require confirmation before deletion.
+
+8) Visibility Toggles
+- Add toggles to:
+  - Show / hide ratings
+  - Show / hide positions
+- These toggles must affect:
+  - Roster
+  - Generated teams
+  - Match results display
+
+Stop after implementing these changes.

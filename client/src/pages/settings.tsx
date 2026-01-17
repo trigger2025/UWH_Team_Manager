@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { 
   Settings, 
   RefreshCw, 
@@ -16,7 +17,9 @@ import {
   RotateCcw,
   Tag,
   X,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -28,7 +31,9 @@ export default function SettingsPage() {
     recalculatePlayerStatsFromResults,
     savedTags,
     deleteTag,
-    isTagInUse
+    isTagInUse,
+    visibilitySettings,
+    updateVisibilitySettings
   } = useApp();
   const { toast } = useToast();
 
@@ -188,6 +193,39 @@ export default function SettingsPage() {
             <div className="flex items-start gap-2 pt-2 text-[10px] text-muted-foreground">
               <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
               <span>Tags in use by players cannot be deleted. Remove them from all players first.</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Eye className="h-4 w-4 text-green-500" />
+              Display Settings
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">Show Ratings</Label>
+                <p className="text-[10px] text-muted-foreground">Display player ratings across all views</p>
+              </div>
+              <Switch
+                checked={visibilitySettings.showRatings}
+                onCheckedChange={(checked) => updateVisibilitySettings({ showRatings: checked })}
+                data-testid="switch-show-ratings"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-sm font-medium">Show Positions</Label>
+                <p className="text-[10px] text-muted-foreground">Display player positions in team views</p>
+              </div>
+              <Switch
+                checked={visibilitySettings.showPositions}
+                onCheckedChange={(checked) => updateVisibilitySettings({ showPositions: checked })}
+                data-testid="switch-show-positions"
+              />
             </div>
           </CardContent>
         </Card>

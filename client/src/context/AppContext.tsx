@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode } from "@shared/schema";
-import { storage, AppData, DEFAULT_GENERATION_WORKSPACE } from "@/lib/storage";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams } from "@shared/schema";
+import { storage, AppData, DEFAULT_GENERATION_WORKSPACE, DEFAULT_VISIBILITY_SETTINGS } from "@/lib/storage";
 import { calculateRatingAdjustments, applyRatingAdjustments } from "@/lib/rating-logic";
 
 const MAX_HISTORY_SIZE = 10;
@@ -19,20 +19,26 @@ interface AppState extends AppData {
   addPlayer: (player: any) => void;
   updatePlayer: (id: number, updates: Partial<Player>) => void;
   deletePlayer: (id: number) => void;
-  saveMatchResult: (result: Omit<Match, "id">) => void;
+  saveMatchResult: (result: Omit<Match, "id">) => number;
   completeMatch: (id: number, blackScore: number, whiteScore: number, tournamentMode?: boolean) => void;
   deleteMatchResult: (id: number) => void;
+  deleteMatchResultWithReversal: (id: number) => void;
   resetAllPlayerStats: () => void;
   updateAdminSettings: (settings: AdminSettings[]) => void;
   updateAdminSetting: (key: string, value: string) => void;
   recalculatePlayerStatsFromResults: () => void;
   deleteTag: (tag: string) => boolean;
   isTagInUse: (tag: string) => boolean;
+  // Visibility settings
+  updateVisibilitySettings: (updates: Partial<VisibilitySettings>) => void;
   // Workspace functions
   updateWorkspace: (updates: Partial<GenerationWorkspace>) => void;
   setGeneratedTeams: (teams: { black: GeneratedTeam; white: GeneratedTeam } | null) => void;
   addToHistory: (teams: { black: GeneratedTeam; white: GeneratedTeam }) => void;
+  addToHistoryTwoPools: (twoPoolsTeams: TwoPoolsGeneratedTeams) => void;
   restoreFromHistory: (index: number) => void;
+  lockTeams: () => void;
+  unlockTeams: () => void;
   clearWorkspace: () => void;
   // Preset team functions
   addPresetTeam: (team: Omit<PresetTeam, "id">) => void;
@@ -126,12 +132,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
-  const saveMatchResult = useCallback((resultData: any) => {
+  const saveMatchResult = useCallback((resultData: any): number => {
     const newMatch: Match = {
       ...resultData,
       id: Math.floor(Math.random() * 1000000),
     };
     setState(prev => ({ ...prev, matchResults: [newMatch, ...prev.matchResults] }));
+    return newMatch.id;
   }, []);
 
   const completeMatch = useCallback((id: number, blackScore: number, whiteScore: number, tournamentMode: boolean = false) => {
@@ -177,6 +184,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       matchResults: prev.matchResults.filter(m => m.id !== id)
     }));
+  }, []);
+
+  // Delete match result and reverse rating changes
+  const deleteMatchResultWithReversal = useCallback((id: number) => {
+    setState(prev => {
+      const match = prev.matchResults.find(m => m.id === id);
+      if (!match) return prev;
+
+      let updatedPlayers = [...prev.players];
+      
+      // If match was completed, reverse the rating changes
+      if (match.completed) {
+        const teams = match.teams as any;
+        const allPlayerSnapshots = [
+          ...(teams.black?.players || []),
+          ...(teams.white?.players || [])
+        ];
+        
+        allPlayerSnapshots.forEach((snapshot: any) => {
+          if (snapshot.playerId) {
+            updatedPlayers = updatedPlayers.map(p => {
+              if (p.id !== snapshot.playerId) return p;
+              
+              // Use ratingBefore from snapshot if available (for accurate reversal)
+              // Otherwise fall back to reversing the delta
+              let newRating: number;
+              if (snapshot.ratingBefore !== undefined) {
+                newRating = snapshot.ratingBefore;
+              } else if (snapshot.ratingDelta !== undefined) {
+                const reversedDelta = -snapshot.ratingDelta;
+                newRating = Math.max(0, Math.min(1000, 
+                  (snapshot.usedOffHand && p.weakHandEnabled ? (p.weakHandRating || 0) : p.rating) + reversedDelta
+                ));
+              } else {
+                return p; // No rating info to reverse
+              }
+              
+              // Reverse win/loss/draw
+              let newWins = p.wins;
+              let newLosses = p.losses;
+              let newDraws = p.draws;
+              
+              const blackWon = match.blackScore! > match.whiteScore!;
+              const whiteWon = match.whiteScore! > match.blackScore!;
+              const isDraw = match.blackScore === match.whiteScore;
+              
+              if (snapshot.team === "Black") {
+                if (blackWon) newWins = Math.max(0, newWins - 1);
+                else if (whiteWon) newLosses = Math.max(0, newLosses - 1);
+                else if (isDraw) newDraws = Math.max(0, newDraws - 1);
+              } else {
+                if (whiteWon) newWins = Math.max(0, newWins - 1);
+                else if (blackWon) newLosses = Math.max(0, newLosses - 1);
+                else if (isDraw) newDraws = Math.max(0, newDraws - 1);
+              }
+              
+              if (snapshot.usedOffHand && p.weakHandEnabled) {
+                return { ...p, weakHandRating: newRating, wins: newWins, losses: newLosses, draws: newDraws };
+              } else {
+                return { ...p, rating: newRating, wins: newWins, losses: newLosses, draws: newDraws };
+              }
+            });
+          }
+        });
+      }
+
+      return {
+        ...prev,
+        players: updatedPlayers,
+        matchResults: prev.matchResults.filter(m => m.id !== id)
+      };
+    });
   }, []);
 
   const resetAllPlayerStats = useCallback(() => {
@@ -343,9 +422,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         generationWorkspace: {
           ...prev.generationWorkspace,
-          generatedTeams: snapshot.teams,
+          // Handle both standard and two pools mode
+          generatedTeams: snapshot.teams || null,
+          twoPoolsTeams: snapshot.twoPoolsTeams || null,
+          poolAssignments: snapshot.poolAssignments || {},
           teamFormations: snapshot.teamFormations,
+          poolAFormations: snapshot.poolAFormations || snapshot.teamFormations,
+          poolBFormations: snapshot.poolBFormations || snapshot.teamFormations,
           playerOffHandSelections: snapshot.playerOffHandSelections,
+          mode: snapshot.mode,
           historyIndex: index
         }
       };
@@ -356,6 +441,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setState(prev => ({
       ...prev,
       generationWorkspace: { ...DEFAULT_GENERATION_WORKSPACE }
+    }));
+  }, []);
+
+  // Add to history for two pools mode
+  const addToHistoryTwoPools = useCallback((twoPoolsTeams: TwoPoolsGeneratedTeams) => {
+    setState(prev => {
+      const snapshot: GeneratedTeamsSnapshot = {
+        id: Math.floor(Math.random() * 1000000),
+        timestamp: new Date().toISOString(),
+        twoPoolsTeams: {
+          poolA: twoPoolsTeams.poolA ? {
+            black: { ...twoPoolsTeams.poolA.black, players: twoPoolsTeams.poolA.black.players.map(p => ({ ...p })) },
+            white: { ...twoPoolsTeams.poolA.white, players: twoPoolsTeams.poolA.white.players.map(p => ({ ...p })) }
+          } : null,
+          poolB: twoPoolsTeams.poolB ? {
+            black: { ...twoPoolsTeams.poolB.black, players: twoPoolsTeams.poolB.black.players.map(p => ({ ...p })) },
+            white: { ...twoPoolsTeams.poolB.white, players: twoPoolsTeams.poolB.white.players.map(p => ({ ...p })) }
+          } : null
+        },
+        poolAssignments: { ...prev.generationWorkspace.poolAssignments },
+        mode: prev.generationWorkspace.mode,
+        teamFormations: { ...prev.generationWorkspace.teamFormations },
+        poolAFormations: { ...prev.generationWorkspace.poolAFormations },
+        poolBFormations: { ...prev.generationWorkspace.poolBFormations },
+        playerOffHandSelections: { ...prev.generationWorkspace.playerOffHandSelections }
+      };
+
+      const newHistory = [snapshot, ...prev.generationWorkspace.history].slice(0, MAX_HISTORY_SIZE);
+
+      return {
+        ...prev,
+        generationWorkspace: {
+          ...prev.generationWorkspace,
+          twoPoolsTeams,
+          history: newHistory,
+          historyIndex: 0
+        }
+      };
+    });
+  }, []);
+
+  // Lock/unlock teams (for Confirm behavior)
+  const lockTeams = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      generationWorkspace: {
+        ...prev.generationWorkspace,
+        teamsLocked: true
+      }
+    }));
+  }, []);
+
+  const unlockTeams = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      generationWorkspace: {
+        ...prev.generationWorkspace,
+        teamsLocked: false
+      }
+    }));
+  }, []);
+
+  // Visibility settings
+  const updateVisibilitySettings = useCallback((updates: Partial<VisibilitySettings>) => {
+    setState(prev => ({
+      ...prev,
+      visibilitySettings: {
+        ...prev.visibilitySettings,
+        ...updates
+      }
     }));
   }, []);
 
@@ -397,16 +552,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       saveMatchResult,
       completeMatch,
       deleteMatchResult,
+      deleteMatchResultWithReversal,
       resetAllPlayerStats,
       updateAdminSettings,
       updateAdminSetting,
       recalculatePlayerStatsFromResults,
       deleteTag,
       isTagInUse,
+      updateVisibilitySettings,
       updateWorkspace,
       setGeneratedTeams,
       addToHistory,
+      addToHistoryTwoPools,
       restoreFromHistory,
+      lockTeams,
+      unlockTeams,
       clearWorkspace,
       addPresetTeam,
       updatePresetTeam,
