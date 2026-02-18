@@ -175,10 +175,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       allSnapshots.forEach((snapshot: any) => {
         const adj = adjustments.find(a => a.playerId === snapshot.playerId);
         if (adj) {
-          const ratingBefore = snapshot.ratingBefore ?? snapshot.ratingUsed;
-          snapshot.ratingBefore = ratingBefore;
-          snapshot.ratingDelta = Math.round(adj.change);
-          snapshot.ratingAfter = Math.round(Math.min(Math.max(ratingBefore + adj.change, 0), 1000));
+          const roundedDelta = Math.round(adj.change);
+          snapshot.ratingDelta = roundedDelta;
+          snapshot.ratingFieldUsed = adj.usedOffHand ? "offHand" : "main";
         }
       });
 
@@ -239,21 +238,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               else if (isDraw) newDraws = Math.max(0, newDraws - 1);
             }
             
-            if (snapshot.ratingBefore !== undefined) {
-              if (snapshot.usedOffHand && p.weakHandEnabled) {
-                return { ...p, weakHandRating: snapshot.ratingBefore, wins: newWins, losses: newLosses, draws: newDraws };
-              } else {
-                return { ...p, rating: snapshot.ratingBefore, wins: newWins, losses: newLosses, draws: newDraws };
-              }
-            }
-            
-            if (snapshot.ratingDelta !== undefined) {
+            if (snapshot.ratingDelta !== undefined && snapshot.ratingDelta !== 0) {
               const reversedDelta = -snapshot.ratingDelta;
-              if (snapshot.usedOffHand && p.weakHandEnabled) {
-                const restored = Math.max(0, Math.min(1000, (p.weakHandRating || 0) + reversedDelta));
+              if (snapshot.usedOffHand && p.weakHandEnabled && p.weakHandRating !== null) {
+                const restored = Math.round(Math.max(0, Math.min(1000, p.weakHandRating + reversedDelta)));
                 return { ...p, weakHandRating: restored, wins: newWins, losses: newLosses, draws: newDraws };
               } else {
-                const restored = Math.max(0, Math.min(1000, p.rating + reversedDelta));
+                const restored = Math.round(Math.max(0, Math.min(1000, p.rating + reversedDelta)));
+                return { ...p, rating: restored, wins: newWins, losses: newLosses, draws: newDraws };
+              }
+            }
+
+            // Legacy fallback: older snapshots may have ratingBefore but no ratingDelta
+            if (snapshot.ratingBefore !== undefined && snapshot.ratingAfter !== undefined) {
+              const legacyDelta = snapshot.ratingBefore - snapshot.ratingAfter;
+              if (snapshot.usedOffHand && p.weakHandEnabled && p.weakHandRating !== null) {
+                const restored = Math.round(Math.max(0, Math.min(1000, p.weakHandRating + legacyDelta)));
+                return { ...p, weakHandRating: restored, wins: newWins, losses: newLosses, draws: newDraws };
+              } else {
+                const restored = Math.round(Math.max(0, Math.min(1000, p.rating + legacyDelta)));
                 return { ...p, rating: restored, wins: newWins, losses: newLosses, draws: newDraws };
               }
             }

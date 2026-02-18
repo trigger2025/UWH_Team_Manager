@@ -273,10 +273,17 @@ export default function GeneratePage() {
     }
     
     const targetTeamKey = sourceTeamKey;
+    // Revalidate position if target pool team has different formation
+    const targetFormation = newTarget[targetTeamKey].formation;
+    const validPositions = FORMATION_ROLES[targetFormation];
+    if (!validPositions.includes(playerData.assignedPosition)) {
+      playerData.assignedPosition = FORMATION_ROLES[targetFormation][0];
+      playerData.formationRole = "filler";
+    }
     newTarget[targetTeamKey].players.push(playerData);
     newTarget[targetTeamKey].totalRating = newTarget[targetTeamKey].players.reduce((s, p) => s + p.ratingUsed, 0);
     
-    const newPoolAssignments = { ...poolAssignments, [playerId]: toPool };
+    const newPoolAssignments: Record<number, PoolAssignment> = { ...poolAssignments, [playerId]: toPool as PoolAssignment };
     
     if (fromPool === "A") {
       updateWorkspace({
@@ -334,6 +341,14 @@ export default function GeneratePage() {
   const hasGeneratedTeams = mode === "two_pools" 
     ? (twoPoolsTeams?.poolA || twoPoolsTeams?.poolB) 
     : generatedTeams;
+
+  // Initialize workspace from last history entry if history exists but no teams are generated
+  useEffect(() => {
+    if (!hasGeneratedTeams && history.length > 0) {
+      const idx = Math.min(historyIndex, history.length - 1);
+      restoreFromHistory(Math.max(0, idx));
+    }
+  }, []); // Only on mount
 
   return (
     <div className="min-h-screen bg-background pb-24">

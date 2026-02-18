@@ -41,9 +41,13 @@ Preferred communication style: Simple, everyday language.
 - **Per-Team Formations**: Black and White teams can have different formations selected independently via `teamFormations: { black: FormationType, white: FormationType }`
 - **Per-Player Off-hand Selection**: Individual players with off-hand enabled can toggle to use their off-hand rating via cyan "Off" button; stored in `playerOffHandSelections: Record<number, boolean>`
 - **Explicit Selection**: Players must be explicitly selected before generation (none selected by default)
-- **History**: Last 10 generated team states with Older/Newer navigation for rollback; history stores teamFormations and playerOffHandSelections
-- **Manual Editing**: Move players between teams without automatic rebalancing or role reassignment
+- **Team Size Scaling**: No hardcoded team size. Players split evenly across 2 teams per pool. Extra players beyond formation size get default position.
+- **Re-roll**: Produces different team arrangements via random jitter in sort + random first-pick in snake draft. Each re-roll creates a new history entry.
+- **History**: Last 10 generated team states with Older/Newer navigation for rollback; history stores teamFormations and playerOffHandSelections. History loads on mount if available, even without generating new teams.
+- **Manual Editing**: Move players between teams without automatic rebalancing. Position revalidated when moving to a team with a different formation (invalid positions get reassigned to default).
 - **Match Snapshots**: Confirm creates MatchTeamSnapshot with rating snapshots (ratingUsed, usedOffHand, team, position) for each player
+- **Rating System**: Delta-based. On match completion, stores `ratingDelta` and `ratingFieldUsed` in snapshot. On deletion, reverses via `currentRating -= ratingDelta`. Legacy snapshots with ratingBefore/ratingAfter are supported as fallback.
+- **Pool Movement**: Players can be moved between Pool A and Pool B after generation, preserving team color. Position revalidated on cross-pool moves.
 - **Modes**: Standard mode and Two Pools mode implemented; Preset Teams and Tournament modes are placeholders
 - **Delete Confirmations**: AlertDialog confirmation required before deleting matches or players
 

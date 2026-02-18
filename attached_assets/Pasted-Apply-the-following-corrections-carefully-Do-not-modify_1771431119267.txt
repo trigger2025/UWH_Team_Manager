@@ -1,0 +1,77 @@
+Apply the following corrections carefully. Do not modify unrelated UI logic.
+
+1) Rating Update System Rewrite (Critical)
+
+Replace rating restoration logic with delta-based logic.
+
+A) When saving match results:
+- For each player:
+  - Calculate ratingDelta.
+  - Store in snapshot:
+      - ratingDelta
+      - ratingFieldUsed (main or offHand)
+- Apply:
+      currentRating += ratingDelta
+- Persist updated player ratings to the global player store immediately.
+
+B) When deleting a match result:
+- For each player in that snapshot:
+      currentRating -= ratingDelta
+- Do NOT restore ratingBefore directly.
+- Do NOT depend on snapshot.ratingBefore for deletion logic.
+
+Ensure rating updates work in:
+- 1 pool mode
+- 2 pools mode
+- Tournament mode (future-safe)
+
+2) Ensure completeMatch() Actually Mutates Global State
+
+- Verify that rating updates modify the central player store.
+- Do not update local copies only.
+- After rating change, trigger state refresh so UI reflects new values.
+
+3) Team Size Scaling Fix
+
+- Remove hardcoded team size of 6.
+- Team size must be:
+    totalPlayersInPool / numberOfTeamsInPool
+- For 1 pool:
+    split evenly across 2 teams.
+- For 2 pools:
+    split evenly within each pool.
+- Do not cap at 6 unless formation explicitly limits it (it should not).
+
+4) Re-roll Fix
+
+- Re-roll must:
+    - Regenerate teams using same selected players.
+    - Produce a different arrangement.
+- Ensure randomisation seed is not fixed.
+- Ensure history adds a new entry.
+
+5) History Loading Fix
+
+- Allow loading previous generated teams without first generating a new one.
+- History viewer must operate independently of Generate button.
+- Active workspace must initialize from last history entry if present.
+
+6) Pool Movement Fix
+
+- Allow moving players:
+    - Between teams within pool
+    - Between Pool A and Pool B
+- Movement must update:
+    - Player.poolAssignment
+    - Team membership
+- Do not block movement due to previous generation constraints.
+
+7) Position Revalidation on Team Move
+
+- When moving a player to a team with a different formation:
+    - Validate position.
+    - If invalid:
+         set to default position for that formation.
+    - Do not retain incompatible positions.
+
+Stop after implementing these corrections.

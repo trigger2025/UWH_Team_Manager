@@ -107,6 +107,7 @@ export function assignFormationRoles(
   }
 
   // 3. Fill remaining roles by best fit (rating order)
+  const extraPlayers: Player[] = [];
   for (const player of finalUnassigned) {
     if (roles.length > 0) {
       const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
@@ -117,7 +118,22 @@ export function assignFormationRoles(
         ratingUsed: rating,
         usedOffHand
       });
+    } else {
+      extraPlayers.push(player);
     }
+  }
+
+  // 4. Handle extra players beyond formation size - assign default position
+  const defaultPosition = FORMATION_ROLES[formation][0];
+  for (const player of extraPlayers) {
+    const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
+    assignedPlayers.push({
+      ...player,
+      assignedPosition: defaultPosition,
+      formationRole: "filler",
+      ratingUsed: rating,
+      usedOffHand
+    });
   }
 
   return assignedPlayers;
@@ -137,28 +153,33 @@ export function generateTeams(
 ): { black: GeneratedTeam; white: GeneratedTeam } {
   const { playerOffHandSelections } = options;
   
-  // Sort players by effective rating descending
+  // Sort players by effective rating descending with slight random jitter for variety
   const sortedPlayers = [...availablePlayers].sort((a, b) => {
     const aRating = getEffectiveRating(a, playerOffHandSelections).rating;
     const bRating = getEffectiveRating(b, playerOffHandSelections).rating;
-    return bRating - aRating;
+    const jitter = (Math.random() - 0.5) * 20;
+    return (bRating - aRating) + jitter;
   });
   
   const blackPlayers: Player[] = [];
   const whitePlayers: Player[] = [];
   
-  // Snake draft distribution
+  // Snake draft distribution with random first-pick
+  const blackFirst = Math.random() > 0.5;
   sortedPlayers.forEach((player, index) => {
     const isEvenRound = Math.floor(index / 2) % 2 === 0;
     const isFirstInRound = index % 2 === 0;
     
+    let goesBlack: boolean;
     if (isEvenRound) {
-      if (isFirstInRound) blackPlayers.push(player);
-      else whitePlayers.push(player);
+      goesBlack = isFirstInRound;
     } else {
-      if (isFirstInRound) whitePlayers.push(player);
-      else blackPlayers.push(player);
+      goesBlack = !isFirstInRound;
     }
+    if (!blackFirst) goesBlack = !goesBlack;
+    
+    if (goesBlack) blackPlayers.push(player);
+    else whitePlayers.push(player);
   });
 
   // Post-generation balancing (simple swap if imbalance is high)
@@ -260,6 +281,15 @@ export function movePlayerBetweenTeams(
   };
   
   const [player] = newTeams[sourceKey].players.splice(playerIndex, 1);
+  
+  // Revalidate position if target team has a different formation
+  const targetFormation = newTeams[targetKey].formation;
+  const validPositions = FORMATION_ROLES[targetFormation];
+  if (!validPositions.includes(player.assignedPosition)) {
+    player.assignedPosition = FORMATION_ROLES[targetFormation][0];
+    player.formationRole = "filler";
+  }
+  
   newTeams[targetKey].players.push(player);
   
   // Recalculate totals
@@ -308,7 +338,7 @@ export function createMatchTeamSnapshot(
         ratingBefore: p.usedOffHand ? (currentOffHandRating ?? currentMainRating) : currentMainRating,
         team: teamColor,
         position: p.assignedPosition
-      };
+      } as PlayerRatingSnapshot;
     });
   };
 
