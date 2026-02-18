@@ -167,8 +167,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         blackScore === whiteScore
       );
 
+      const updatedTeams = JSON.parse(JSON.stringify(teams));
+      const allSnapshots = [
+        ...updatedTeams.black.players,
+        ...updatedTeams.white.players
+      ];
+      allSnapshots.forEach((snapshot: any) => {
+        const adj = adjustments.find(a => a.playerId === snapshot.playerId);
+        if (adj) {
+          const ratingBefore = snapshot.ratingBefore ?? snapshot.ratingUsed;
+          snapshot.ratingBefore = ratingBefore;
+          snapshot.ratingDelta = Math.round(adj.change);
+          snapshot.ratingAfter = Math.round(Math.min(Math.max(ratingBefore + adj.change, 0), 1000));
+        }
+      });
+
       const updatedMatches = prev.matchResults.map(m => 
-        m.id === id ? { ...m, blackScore, whiteScore, completed: true } : m
+        m.id === id ? { ...m, blackScore, whiteScore, completed: true, teams: updatedTeams } : m
       );
 
       return {
@@ -186,7 +201,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, []);
 
-  // Delete match result and reverse rating changes
   const deleteMatchResultWithReversal = useCallback((id: number) => {
     setState(prev => {
       const match = prev.matchResults.find(m => m.id === id);
@@ -194,7 +208,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       let updatedPlayers = [...prev.players];
       
-      // If match was completed, reverse the rating changes
       if (match.completed) {
         const teams = match.teams as any;
         const allPlayerSnapshots = [
@@ -203,50 +216,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ];
         
         allPlayerSnapshots.forEach((snapshot: any) => {
-          if (snapshot.playerId) {
-            updatedPlayers = updatedPlayers.map(p => {
-              if (p.id !== snapshot.playerId) return p;
-              
-              // Use ratingBefore from snapshot if available (for accurate reversal)
-              // Otherwise fall back to reversing the delta
-              let newRating: number;
-              if (snapshot.ratingBefore !== undefined) {
-                newRating = snapshot.ratingBefore;
-              } else if (snapshot.ratingDelta !== undefined) {
-                const reversedDelta = -snapshot.ratingDelta;
-                newRating = Math.max(0, Math.min(1000, 
-                  (snapshot.usedOffHand && p.weakHandEnabled ? (p.weakHandRating || 0) : p.rating) + reversedDelta
-                ));
-              } else {
-                return p; // No rating info to reverse
-              }
-              
-              // Reverse win/loss/draw
-              let newWins = p.wins;
-              let newLosses = p.losses;
-              let newDraws = p.draws;
-              
-              const blackWon = match.blackScore! > match.whiteScore!;
-              const whiteWon = match.whiteScore! > match.blackScore!;
-              const isDraw = match.blackScore === match.whiteScore;
-              
-              if (snapshot.team === "Black") {
-                if (blackWon) newWins = Math.max(0, newWins - 1);
-                else if (whiteWon) newLosses = Math.max(0, newLosses - 1);
-                else if (isDraw) newDraws = Math.max(0, newDraws - 1);
-              } else {
-                if (whiteWon) newWins = Math.max(0, newWins - 1);
-                else if (blackWon) newLosses = Math.max(0, newLosses - 1);
-                else if (isDraw) newDraws = Math.max(0, newDraws - 1);
-              }
-              
+          if (!snapshot.playerId) return;
+          
+          updatedPlayers = updatedPlayers.map(p => {
+            if (p.id !== snapshot.playerId) return p;
+            
+            let newWins = p.wins;
+            let newLosses = p.losses;
+            let newDraws = p.draws;
+            
+            const blackWon = match.blackScore! > match.whiteScore!;
+            const whiteWon = match.whiteScore! > match.blackScore!;
+            const isDraw = match.blackScore === match.whiteScore;
+            
+            if (snapshot.team === "Black") {
+              if (blackWon) newWins = Math.max(0, newWins - 1);
+              else if (whiteWon) newLosses = Math.max(0, newLosses - 1);
+              else if (isDraw) newDraws = Math.max(0, newDraws - 1);
+            } else {
+              if (whiteWon) newWins = Math.max(0, newWins - 1);
+              else if (blackWon) newLosses = Math.max(0, newLosses - 1);
+              else if (isDraw) newDraws = Math.max(0, newDraws - 1);
+            }
+            
+            if (snapshot.ratingBefore !== undefined) {
               if (snapshot.usedOffHand && p.weakHandEnabled) {
-                return { ...p, weakHandRating: newRating, wins: newWins, losses: newLosses, draws: newDraws };
+                return { ...p, weakHandRating: snapshot.ratingBefore, wins: newWins, losses: newLosses, draws: newDraws };
               } else {
-                return { ...p, rating: newRating, wins: newWins, losses: newLosses, draws: newDraws };
+                return { ...p, rating: snapshot.ratingBefore, wins: newWins, losses: newLosses, draws: newDraws };
               }
-            });
-          }
+            }
+            
+            if (snapshot.ratingDelta !== undefined) {
+              const reversedDelta = -snapshot.ratingDelta;
+              if (snapshot.usedOffHand && p.weakHandEnabled) {
+                const restored = Math.max(0, Math.min(1000, (p.weakHandRating || 0) + reversedDelta));
+                return { ...p, weakHandRating: restored, wins: newWins, losses: newLosses, draws: newDraws };
+              } else {
+                const restored = Math.max(0, Math.min(1000, p.rating + reversedDelta));
+                return { ...p, rating: restored, wins: newWins, losses: newLosses, draws: newDraws };
+              }
+            }
+            
+            return { ...p, wins: newWins, losses: newLosses, draws: newDraws };
+          });
         });
       }
 

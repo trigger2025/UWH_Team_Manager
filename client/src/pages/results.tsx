@@ -100,23 +100,20 @@ export default function ResultsPage() {
     const w = parseInt(wScore);
     if (isNaN(b) || isNaN(w)) return;
     
-    // Create snapshot and save match
     const teamSnapshot = createMatchTeamSnapshot(teams, players);
     const matchId = saveMatchResult({
       date: new Date(),
       teams: teamSnapshot,
       completed: false,
-      poolId: null,
+      poolId: pool === "A" ? 1 : 2,
       formation: teams.black.formation,
       blackScore: null,
       whiteScore: null,
       tournamentId: null,
     });
     
-    // Complete the match immediately with the returned ID
     completeMatch(matchId, b, w, false);
     
-    // Clear that pool's teams
     if (pool === "A") {
       updateWorkspace({ twoPoolsTeams: { ...twoPoolsTeams, poolA: null } });
       setPendingPoolABlackScore("");
@@ -425,14 +422,21 @@ function MatchCard({
         )}
         
         <CardHeader className="pb-2 pt-4 px-4">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center gap-2">
             <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
               <CalendarDays className="h-3 w-3" />
               {format(new Date(match.date), 'MMM d, h:mm a')}
             </div>
-            {!match.completed && (
-              <Badge className="bg-primary text-primary-foreground animate-pulse text-[10px]">Active</Badge>
-            )}
+            <div className="flex items-center gap-1.5">
+              {match.poolId && (
+                <Badge variant="outline" className={`text-[9px] px-1.5 py-0 ${match.poolId === 1 ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-violet-500/10 text-violet-400 border-violet-500/30'}`}>
+                  {match.poolId === 1 ? 'Pool A' : 'Pool B'}
+                </Badge>
+              )}
+              {!match.completed && (
+                <Badge className="bg-primary text-primary-foreground animate-pulse text-[10px]">Active</Badge>
+              )}
+            </div>
           </div>
         </CardHeader>
 
@@ -585,7 +589,7 @@ function MatchCard({
               </div>
               <div className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <LayoutGrid className="h-3 w-3" />
-                Formation: {match.formation}
+                {(teams.black?.players?.length || 0) + (teams.white?.players?.length || 0)} players
               </div>
             </div>
           )}

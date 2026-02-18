@@ -296,13 +296,16 @@ export function createMatchTeamSnapshot(
   const createPlayerSnapshots = (team: GeneratedTeam, teamColor: "Black" | "White"): PlayerRatingSnapshot[] => {
     return team.players.map(p => {
       const originalPlayer = players.find(pl => pl.id === p.id);
+      const currentMainRating = originalPlayer?.rating ?? p.rating;
+      const currentOffHandRating = originalPlayer?.weakHandRating ?? null;
       return {
         playerId: p.id,
         playerName: p.name,
         ratingUsed: p.ratingUsed,
         usedOffHand: p.usedOffHand,
-        mainRating: originalPlayer?.rating ?? p.rating,
-        offHandRating: originalPlayer?.weakHandRating ?? null,
+        mainRating: currentMainRating,
+        offHandRating: currentOffHandRating,
+        ratingBefore: p.usedOffHand ? (currentOffHandRating ?? currentMainRating) : currentMainRating,
         team: teamColor,
         position: p.assignedPosition
       };

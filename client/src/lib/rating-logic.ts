@@ -1,8 +1,9 @@
-import { Player, GeneratedTeam, Match } from "@shared/schema";
+import { Player, GeneratedTeam, Match, MatchTeamSnapshot } from "@shared/schema";
 
 interface RatingChange {
   playerId: number;
   change: number;
+  usedOffHand: boolean;
 }
 
 /**
@@ -50,12 +51,12 @@ export function calculateRatingAdjustments(
 
   // Apply to black team
   blackTeam.players.forEach(p => {
-    adjustments.push({ playerId: p.id, change: baseChange });
+    adjustments.push({ playerId: p.id, change: baseChange, usedOffHand: p.usedOffHand || false });
   });
 
   // Apply to white team (inverse change)
   whiteTeam.players.forEach(p => {
-    adjustments.push({ playerId: p.id, change: -baseChange });
+    adjustments.push({ playerId: p.id, change: -baseChange, usedOffHand: p.usedOffHand || false });
   });
 
   return adjustments;
@@ -75,29 +76,33 @@ export function applyRatingAdjustments(
     const adj = adjustments.find(a => a.playerId === player.id);
     if (!adj) return player;
 
-    const isBlack = adj.change > 0 && blackWin || adj.change < 0 && whiteWin || draw;
-    // Note: change direction depends on which team they were on. 
-    // In our calculateRatingAdjustments, positive baseChange means Black outperformed expectations.
-    
-    // We need to know which team the player was on. 
-    // In our logic, positive adj.change in adjustments array for black team players means they won/overperformed.
-    
     let won = false;
     let lost = false;
     
-    // If change > 0 and black won, they were on black
-    // If change < 0 and white won, they were on white
-    // This is a bit brittle, but works for the current calculation logic
-    
-    if (adj.change > 0) { // Was on Black
+    if (adj.change > 0) {
       if (blackWin) won = true;
       else if (whiteWin) lost = true;
-    } else { // Was on White
+    } else {
       if (whiteWin) won = true;
       else if (blackWin) lost = true;
     }
 
-    const newRating = Math.min(Math.max(player.rating + adj.change, 0), 1000);
+    if (adj.usedOffHand && player.weakHandEnabled && player.weakHandRating !== null) {
+      const newOffHandRating = Math.round(Math.min(Math.max(player.weakHandRating + adj.change, 0), 1000));
+      return {
+        ...player,
+        weakHandRating: newOffHandRating,
+        wins: player.wins + (won ? 1 : 0),
+        losses: player.losses + (lost ? 1 : 0),
+        draws: player.draws + (draw ? 1 : 0),
+        ratingHistory: [
+          ...player.ratingHistory as any[],
+          { date: new Date().toISOString(), rating: player.rating, offHandRating: newOffHandRating }
+        ]
+      };
+    }
+
+    const newRating = Math.round(Math.min(Math.max(player.rating + adj.change, 0), 1000));
     
     return {
       ...player,

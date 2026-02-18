@@ -212,12 +212,83 @@ export default function GeneratePage() {
   const handleMovePlayer = (playerId: number, toTeam: "Black" | "White") => {
     if (!generatedTeams) return;
     
-    // Clone current teams and move player
     const cloned = cloneTeams(generatedTeams);
     const updated = movePlayerBetweenTeams(cloned, playerId, toTeam);
     
-    // Update without adding to history (manual edit)
     updateWorkspace({ generatedTeams: updated });
+  };
+
+  const handleMovePlayerTwoPools = (playerId: number, toTeam: "Black" | "White", pool: "A" | "B") => {
+    if (!twoPoolsTeams) return;
+    const poolTeams = pool === "A" ? twoPoolsTeams.poolA : twoPoolsTeams.poolB;
+    if (!poolTeams) return;
+    
+    const cloned = cloneTeams(poolTeams);
+    const updated = movePlayerBetweenTeams(cloned, playerId, toTeam);
+    
+    if (pool === "A") {
+      updateWorkspace({ twoPoolsTeams: { ...twoPoolsTeams, poolA: updated } });
+    } else {
+      updateWorkspace({ twoPoolsTeams: { ...twoPoolsTeams, poolB: updated } });
+    }
+  };
+
+  const handleSwapPlayerPool = (playerId: number, fromPool: "A" | "B") => {
+    if (!twoPoolsTeams) return;
+    const toPool = fromPool === "A" ? "B" : "A";
+    
+    const sourceTeams = fromPool === "A" ? twoPoolsTeams.poolA : twoPoolsTeams.poolB;
+    const targetTeams = toPool === "A" ? twoPoolsTeams.poolA : twoPoolsTeams.poolB;
+    if (!sourceTeams) return;
+    
+    let playerData: PlayerWithAssignedFormationRole | null = null;
+    let sourceTeamKey: "black" | "white" | null = null;
+    
+    const bIdx = sourceTeams.black.players.findIndex(p => p.id === playerId);
+    if (bIdx !== -1) {
+      playerData = { ...sourceTeams.black.players[bIdx] };
+      sourceTeamKey = "black";
+    } else {
+      const wIdx = sourceTeams.white.players.findIndex(p => p.id === playerId);
+      if (wIdx !== -1) {
+        playerData = { ...sourceTeams.white.players[wIdx] };
+        sourceTeamKey = "white";
+      }
+    }
+    
+    if (!playerData || !sourceTeamKey) return;
+    
+    const newSource = cloneTeams(sourceTeams);
+    newSource[sourceTeamKey].players = newSource[sourceTeamKey].players.filter(p => p.id !== playerId);
+    newSource[sourceTeamKey].totalRating = newSource[sourceTeamKey].players.reduce((s, p) => s + p.ratingUsed, 0);
+    
+    let newTarget: { black: GeneratedTeam; white: GeneratedTeam };
+    if (targetTeams) {
+      newTarget = cloneTeams(targetTeams);
+    } else {
+      newTarget = {
+        black: { color: "Black", formation: sourceTeams.black.formation, players: [], totalRating: 0 },
+        white: { color: "White", formation: sourceTeams.white.formation, players: [], totalRating: 0 }
+      };
+    }
+    
+    const targetTeamKey = sourceTeamKey;
+    newTarget[targetTeamKey].players.push(playerData);
+    newTarget[targetTeamKey].totalRating = newTarget[targetTeamKey].players.reduce((s, p) => s + p.ratingUsed, 0);
+    
+    const newPoolAssignments = { ...poolAssignments, [playerId]: toPool };
+    
+    if (fromPool === "A") {
+      updateWorkspace({
+        twoPoolsTeams: { poolA: newSource, poolB: newTarget },
+        poolAssignments: newPoolAssignments
+      });
+    } else {
+      updateWorkspace({
+        twoPoolsTeams: { poolA: newTarget, poolB: newSource },
+        poolAssignments: newPoolAssignments
+      });
+    }
   };
 
   const handleConfirm = () => {
@@ -725,7 +796,9 @@ export default function GeneratePage() {
                     <TeamCard
                       team={twoPoolsTeams.poolA.black}
                       colorClass="primary"
-                      onMovePlayer={(playerId) => handleMovePlayer(playerId, "White")}
+                      onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "White", "A")}
+                      onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "A")}
+                      poolLabel="A"
                       showRatings={showRatings}
                       showPositions={showPositions}
                     />
@@ -737,7 +810,9 @@ export default function GeneratePage() {
                     <TeamCard
                       team={twoPoolsTeams.poolA.white}
                       colorClass="cyan-400"
-                      onMovePlayer={(playerId) => handleMovePlayer(playerId, "Black")}
+                      onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "Black", "A")}
+                      onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "A")}
+                      poolLabel="A"
                       showRatings={showRatings}
                       showPositions={showPositions}
                     />
@@ -757,7 +832,9 @@ export default function GeneratePage() {
                     <TeamCard
                       team={twoPoolsTeams.poolB.black}
                       colorClass="primary"
-                      onMovePlayer={(playerId) => handleMovePlayer(playerId, "White")}
+                      onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "White", "B")}
+                      onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "B")}
+                      poolLabel="B"
                       showRatings={showRatings}
                       showPositions={showPositions}
                     />
@@ -769,7 +846,9 @@ export default function GeneratePage() {
                     <TeamCard
                       team={twoPoolsTeams.poolB.white}
                       colorClass="cyan-400"
-                      onMovePlayer={(playerId) => handleMovePlayer(playerId, "Black")}
+                      onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "Black", "B")}
+                      onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "B")}
+                      poolLabel="B"
                       showRatings={showRatings}
                       showPositions={showPositions}
                     />
@@ -922,11 +1001,13 @@ interface TeamCardProps {
   team: GeneratedTeam;
   colorClass: string;
   onMovePlayer: (playerId: number) => void;
+  onSwapPool?: (playerId: number) => void;
+  poolLabel?: "A" | "B";
   showRatings?: boolean;
   showPositions?: boolean;
 }
 
-function TeamCard({ team, colorClass, onMovePlayer, showRatings = true, showPositions = true }: TeamCardProps) {
+function TeamCard({ team, colorClass, onMovePlayer, onSwapPool, poolLabel, showRatings = true, showPositions = true }: TeamCardProps) {
   const isBlack = team.color === "Black";
   const bgColor = isBlack ? "bg-primary/10" : "bg-cyan-400/10";
   const borderColor = isBlack ? "border-primary/20" : "border-cyan-400/20";
@@ -958,6 +1039,8 @@ function TeamCard({ team, colorClass, onMovePlayer, showRatings = true, showPosi
             index={i}
             isLast={i === team.players.length - 1}
             onMove={() => onMovePlayer(player.id)}
+            onSwapPool={onSwapPool ? () => onSwapPool(player.id) : undefined}
+            poolLabel={poolLabel}
             showRatings={showRatings}
             showPositions={showPositions}
           />
@@ -977,11 +1060,13 @@ interface PlayerRowProps {
   index: number;
   isLast: boolean;
   onMove: () => void;
+  onSwapPool?: () => void;
+  poolLabel?: "A" | "B";
   showRatings?: boolean;
   showPositions?: boolean;
 }
 
-function PlayerRow({ player, index, isLast, onMove, showRatings = true, showPositions = true }: PlayerRowProps) {
+function PlayerRow({ player, index, isLast, onMove, onSwapPool, poolLabel, showRatings = true, showPositions = true }: PlayerRowProps) {
   return (
     <div className={`flex items-center justify-between px-3 py-2 ${!isLast ? 'border-b border-border/30' : ''}`}>
       <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -1000,6 +1085,20 @@ function PlayerRow({ player, index, isLast, onMove, showRatings = true, showPosi
           <Badge variant="secondary" className="text-[9px] font-bold uppercase tracking-tight">
             {player.assignedPosition}
           </Badge>
+        )}
+        {onSwapPool && poolLabel && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={`h-6 px-1.5 text-[9px] font-bold ${poolLabel === "A" ? 'text-violet-400 border-violet-400/30' : 'text-amber-400 border-amber-400/30'}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSwapPool();
+            }}
+            data-testid={`button-swap-pool-${player.id}`}
+          >
+            {poolLabel === "A" ? "B" : "A"}
+          </Button>
         )}
         <Button
           variant="ghost"
