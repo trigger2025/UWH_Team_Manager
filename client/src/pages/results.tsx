@@ -41,7 +41,7 @@ export default function ResultsPage() {
   } = useApp();
   const [, navigate] = useLocation();
   
-  const { showRatings, showPositions } = visibilitySettings;
+  const { showRatings = true, showPositions = true } = visibilitySettings || {};
   
   const { teamsLocked, generatedTeams, twoPoolsTeams, mode } = generationWorkspace;
   const [scoringMatchId, setScoringMatchId] = useState<number | null>(null);
@@ -410,6 +410,8 @@ function MatchCard({
   onScoreClick, onCancelScoring, onBlackScoreChange, onWhiteScoreChange, 
   onComplete, onDelete 
 }: any) {
+  const { visibilitySettings } = useApp();
+  const { showRatings = true, showPositions = true } = visibilitySettings || {};
   const [isOpen, setIsOpen] = useState(false);
   const teams = match.teams as any;
 

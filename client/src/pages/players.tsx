@@ -30,7 +30,7 @@ import { Player } from "@shared/schema";
 
 export default function PlayersPage() {
   const { players, updatePlayer, deletePlayer, visibilitySettings } = useApp();
-  const { showRatings, showPositions } = visibilitySettings;
+  const { showRatings = true, showPositions = true } = visibilitySettings || {};
   const [search, setSearch] = useState("");
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [playerToDelete, setPlayerToDelete] = useState<Player | null>(null);

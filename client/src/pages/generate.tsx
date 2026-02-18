@@ -52,7 +52,7 @@ export default function GeneratePage() {
     visibilitySettings
   } = useApp();
   
-  const { showRatings, showPositions } = visibilitySettings;
+  const { showRatings = true, showPositions = true } = visibilitySettings || {};
   const [, navigate] = useLocation();
 
   const { 
