@@ -142,30 +142,98 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const completeMatch = useCallback((id: number, blackScore: number, whiteScore: number, tournamentMode: boolean = false) => {
+    console.log("[completeMatch] Running for match id:", id, "scores:", blackScore, "-", whiteScore);
     setState(prev => {
       const match = prev.matchResults.find(m => m.id === id);
-      if (!match || match.completed) return prev;
+      if (!match || match.completed) {
+        console.log("[completeMatch] Match not found or already completed, skipping");
+        return prev;
+      }
 
       const teams = match.teams as any;
       const kFactorSetting = prev.adminSettings.find(s => s.key === "rating_strength");
       const kFactor = kFactorSetting ? parseInt(kFactorSetting.value as string) : 32;
 
+      const blackTeamForCalc = {
+        ...teams.black,
+        players: (teams.black.players || []).map((p: any) => ({
+          ...p,
+          id: p.playerId ?? p.id,
+        })),
+      };
+      const whiteTeamForCalc = {
+        ...teams.white,
+        players: (teams.white.players || []).map((p: any) => ({
+          ...p,
+          id: p.playerId ?? p.id,
+        })),
+      };
+
       const adjustments = calculateRatingAdjustments(
-        teams.black,
-        teams.white,
+        blackTeamForCalc,
+        whiteTeamForCalc,
         blackScore,
         whiteScore,
         kFactor,
         tournamentMode
       );
 
-      const updatedPlayers = applyRatingAdjustments(
-        prev.players,
-        adjustments,
-        blackScore > whiteScore,
-        whiteScore > blackScore,
-        blackScore === whiteScore
-      );
+      adjustments.forEach(adj => {
+        console.log("[completeMatch] ratingDelta for player", adj.playerId, ":", Math.round(adj.change), adj.usedOffHand ? "(off-hand)" : "(main)");
+      });
+
+      const blackWon = blackScore > whiteScore;
+      const whiteWon = whiteScore > blackScore;
+      const isDraw = blackScore === whiteScore;
+
+      const updatedPlayers = prev.players.map(player => {
+        const adj = adjustments.find(a => a.playerId === player.id);
+        if (!adj) return player;
+
+        const beforeRating = adj.usedOffHand && player.weakHandEnabled && player.weakHandRating !== null
+          ? player.weakHandRating
+          : player.rating;
+
+        let won = false;
+        let lost = false;
+        if (adj.change > 0) {
+          if (blackWon) won = true;
+          else if (whiteWon) lost = true;
+        } else {
+          if (whiteWon) won = true;
+          else if (blackWon) lost = true;
+        }
+
+        if (adj.usedOffHand && player.weakHandEnabled && player.weakHandRating !== null) {
+          const newOffHandRating = Math.round(Math.min(Math.max(player.weakHandRating + adj.change, 0), 1000));
+          console.log("[completeMatch] Player", player.id, player.name, "off-hand rating:", beforeRating, "->", newOffHandRating);
+          return {
+            ...player,
+            weakHandRating: newOffHandRating,
+            wins: player.wins + (won ? 1 : 0),
+            losses: player.losses + (lost ? 1 : 0),
+            draws: player.draws + (isDraw ? 1 : 0),
+            ratingHistory: [
+              ...player.ratingHistory as any[],
+              { date: new Date().toISOString(), rating: player.rating, offHandRating: newOffHandRating }
+            ]
+          };
+        }
+
+        const newRating = Math.round(Math.min(Math.max(player.rating + adj.change, 0), 1000));
+        console.log("[completeMatch] Player", player.id, player.name, "main rating:", beforeRating, "->", newRating);
+        return {
+          ...player,
+          rating: newRating,
+          wins: player.wins + (won ? 1 : 0),
+          losses: player.losses + (lost ? 1 : 0),
+          draws: player.draws + (isDraw ? 1 : 0),
+          ratingHistory: [
+            ...player.ratingHistory as any[],
+            { date: new Date().toISOString(), rating: newRating }
+          ]
+        };
+      });
 
       const updatedTeams = JSON.parse(JSON.stringify(teams));
       const allSnapshots = [
@@ -173,7 +241,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...updatedTeams.white.players
       ];
       allSnapshots.forEach((snapshot: any) => {
-        const adj = adjustments.find(a => a.playerId === snapshot.playerId);
+        const adj = adjustments.find(a => a.playerId === (snapshot.playerId ?? snapshot.id));
         if (adj) {
           const roundedDelta = Math.round(adj.change);
           snapshot.ratingDelta = roundedDelta;
@@ -185,6 +253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         m.id === id ? { ...m, blackScore, whiteScore, completed: true, teams: updatedTeams } : m
       );
 
+      console.log("[completeMatch] Committing updated players and match to state");
       return {
         ...prev,
         players: updatedPlayers,
