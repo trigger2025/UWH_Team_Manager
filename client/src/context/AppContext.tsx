@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams, TeamTemplate, TeamTemplateStructure, PlayerWithAssignedFormationRole } from "@shared/schema";
 import { storage, AppData, DEFAULT_GENERATION_WORKSPACE, DEFAULT_VISIBILITY_SETTINGS } from "@/lib/storage";
 import { calculateRatingAdjustments, applyRatingAdjustments } from "@/lib/rating-logic";
 
@@ -31,7 +31,6 @@ interface AppState extends AppData {
   isTagInUse: (tag: string) => boolean;
   // Visibility settings
   updateVisibilitySettings: (updates: Partial<VisibilitySettings>) => void;
-  // Workspace functions
   updateWorkspace: (updates: Partial<GenerationWorkspace>) => void;
   setGeneratedTeams: (teams: { black: GeneratedTeam; white: GeneratedTeam } | null) => void;
   addToHistory: (teams: { black: GeneratedTeam; white: GeneratedTeam }) => void;
@@ -40,6 +39,8 @@ interface AppState extends AppData {
   lockTeams: () => void;
   unlockTeams: () => void;
   clearWorkspace: () => void;
+  saveTeamTemplate: (teams: { black: GeneratedTeam; white: GeneratedTeam } | null, twoPoolsTeams: TwoPoolsGeneratedTeams | null) => void;
+  loadFromTemplate: (template: TeamTemplate) => void;
   // Preset team functions
   addPresetTeam: (team: Omit<PresetTeam, "id">) => void;
   updatePresetTeam: (id: number, updates: Partial<PresetTeam>) => void;
@@ -525,8 +526,169 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const clearWorkspace = useCallback(() => {
     setState(prev => ({
       ...prev,
-      generationWorkspace: { ...DEFAULT_GENERATION_WORKSPACE }
+      generationWorkspace: {
+        ...DEFAULT_GENERATION_WORKSPACE,
+        teamTemplates: prev.generationWorkspace.teamTemplates
+      }
     }));
+  }, []);
+
+  const toTemplateStructure = (team: GeneratedTeam): TeamTemplateStructure => ({
+    formation: team.formation,
+    players: team.players.map(p => ({
+      playerId: p.id,
+      assignedPosition: p.assignedPosition,
+      usedOffHand: p.usedOffHand || false,
+    })),
+  });
+
+  const saveTeamTemplate = useCallback((
+    teams: { black: GeneratedTeam; white: GeneratedTeam } | null,
+    twoPoolsTeams: TwoPoolsGeneratedTeams | null
+  ) => {
+    setState(prev => {
+      const ws = prev.generationWorkspace;
+      const template: TeamTemplate = {
+        id: Math.random().toString(36).substring(2, 10),
+        mode: ws.mode,
+        createdAt: Date.now(),
+        pools: {},
+        teamFormations: { ...ws.teamFormations },
+        playerOffHandSelections: { ...ws.playerOffHandSelections },
+      };
+
+      if (ws.mode === "two_pools" && twoPoolsTeams) {
+        if (twoPoolsTeams.poolA) {
+          template.pools.A = {
+            black: toTemplateStructure(twoPoolsTeams.poolA.black),
+            white: toTemplateStructure(twoPoolsTeams.poolA.white),
+          };
+        }
+        if (twoPoolsTeams.poolB) {
+          template.pools.B = {
+            black: toTemplateStructure(twoPoolsTeams.poolB.black),
+            white: toTemplateStructure(twoPoolsTeams.poolB.white),
+          };
+        }
+        template.poolAFormations = { ...ws.poolAFormations };
+        template.poolBFormations = { ...ws.poolBFormations };
+        template.poolAssignments = { ...ws.poolAssignments };
+      } else if (teams) {
+        template.pools.A = {
+          black: toTemplateStructure(teams.black),
+          white: toTemplateStructure(teams.white),
+        };
+      }
+
+      const newTemplates = [template, ...(ws.teamTemplates || [])].slice(0, MAX_HISTORY_SIZE);
+      return {
+        ...prev,
+        generationWorkspace: {
+          ...ws,
+          teamTemplates: newTemplates,
+        },
+      };
+    });
+  }, []);
+
+  const rebuildTeamFromTemplate = (
+    templateTeam: TeamTemplateStructure,
+    color: "Black" | "White",
+    allPlayers: Player[],
+    offHandSelections: Record<number, boolean>
+  ): GeneratedTeam => {
+    const players: PlayerWithAssignedFormationRole[] = templateTeam.players
+      .map(entry => {
+        const player = allPlayers.find(p => p.id === entry.playerId);
+        if (!player) return null;
+        const useOffHand = offHandSelections[player.id] || entry.usedOffHand || false;
+        const ratingUsed = useOffHand && player.weakHandEnabled && player.weakHandRating !== null
+          ? player.weakHandRating
+          : player.rating;
+        return {
+          ...player,
+          assignedPosition: entry.assignedPosition as any,
+          formationRole: "main" as const,
+          ratingUsed,
+          usedOffHand: useOffHand,
+        };
+      })
+      .filter((p): p is PlayerWithAssignedFormationRole => p !== null);
+
+    return {
+      color,
+      formation: templateTeam.formation,
+      players,
+      totalRating: players.reduce((sum, p) => sum + p.ratingUsed, 0),
+    };
+  };
+
+  const loadFromTemplate = useCallback((template: TeamTemplate) => {
+    setState(prev => {
+      const ws = prev.generationWorkspace;
+      const allPlayers = prev.players;
+      const offHandSelections = template.playerOffHandSelections || {};
+
+      if (template.mode === "two_pools" || (template.pools.A && template.pools.B)) {
+        const poolA = template.pools.A ? {
+          black: rebuildTeamFromTemplate(template.pools.A.black, "Black", allPlayers, offHandSelections),
+          white: rebuildTeamFromTemplate(template.pools.A.white, "White", allPlayers, offHandSelections),
+        } : null;
+        const poolB = template.pools.B ? {
+          black: rebuildTeamFromTemplate(template.pools.B.black, "Black", allPlayers, offHandSelections),
+          white: rebuildTeamFromTemplate(template.pools.B.white, "White", allPlayers, offHandSelections),
+        } : null;
+
+        const selectedIds = [
+          ...(template.pools.A?.black.players || []),
+          ...(template.pools.A?.white.players || []),
+          ...(template.pools.B?.black.players || []),
+          ...(template.pools.B?.white.players || []),
+        ].map(p => p.playerId).filter(id => allPlayers.some(pl => pl.id === id));
+
+        return {
+          ...prev,
+          generationWorkspace: {
+            ...ws,
+            mode: "two_pools",
+            twoPoolsTeams: { poolA, poolB },
+            generatedTeams: null,
+            teamFormations: template.teamFormations,
+            poolAFormations: template.poolAFormations || template.teamFormations,
+            poolBFormations: template.poolBFormations || template.teamFormations,
+            playerOffHandSelections: offHandSelections,
+            poolAssignments: template.poolAssignments || {},
+            selectedPlayerIds: selectedIds,
+          },
+        };
+      } else {
+        const poolData = template.pools.A;
+        if (!poolData) return prev;
+
+        const teams = {
+          black: rebuildTeamFromTemplate(poolData.black, "Black", allPlayers, offHandSelections),
+          white: rebuildTeamFromTemplate(poolData.white, "White", allPlayers, offHandSelections),
+        };
+
+        const selectedIds = [
+          ...poolData.black.players,
+          ...poolData.white.players,
+        ].map(p => p.playerId).filter(id => allPlayers.some(pl => pl.id === id));
+
+        return {
+          ...prev,
+          generationWorkspace: {
+            ...ws,
+            mode: "standard",
+            generatedTeams: teams,
+            twoPoolsTeams: null,
+            teamFormations: template.teamFormations,
+            playerOffHandSelections: offHandSelections,
+            selectedPlayerIds: selectedIds,
+          },
+        };
+      }
+    });
   }, []);
 
   // Add to history for two pools mode
@@ -653,6 +815,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lockTeams,
       unlockTeams,
       clearWorkspace,
+      saveTeamTemplate,
+      loadFromTemplate,
       addPresetTeam,
       updatePresetTeam,
       deletePresetTeam

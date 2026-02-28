@@ -1,0 +1,147 @@
+///////////////////////////////
+//// FIX PASS 8
+//// GENERATE WORKSPACE + HISTORY REFACTOR
+///////////////////////////////
+
+GOAL:
+- Generate tab always opens in Player Selection state
+- Teams are NOT auto-loaded when entering Generate
+- History becomes optional via button
+- History stores STRUCTURE ONLY (no ratings)
+- Loading history pulls CURRENT ratings
+- Confirm resets workspace cleanly
+
+
+////////////////////////////////////////////////////////////
+1️⃣ GENERATE TAB DEFAULT BEHAVIOUR
+////////////////////////////////////////////////////////////
+
+WHEN Generate tab mounts:
+
+- Clear any existing generatedTeams state
+- Set viewState = "selection"
+- DO NOT auto-load lastGeneratedTeams
+
+AFTER Confirm Teams:
+
+- Save template to history (structure only)
+- Navigate to Match Results
+- Clear generatedTeams
+- Reset viewState = "selection"
+- Clear selectedPlayers
+
+
+////////////////////////////////////////////////////////////
+2️⃣ ADD LOAD HISTORY BUTTON
+////////////////////////////////////////////////////////////
+
+In Generate tab (visible BEFORE generating teams):
+
+Add button:
+
+<Button>
+  Load Previous Teams
+</Button>
+
+ON CLICK:
+- Open modal/list of last 10 team templates
+- Selecting one:
+    • rebuilds generatedTeams from template
+    • sets viewState = "generated"
+    • DOES NOT create match result entry
+    • DOES NOT alter ratings
+
+
+////////////////////////////////////////////////////////////
+3️⃣ REPLACE TEAM HISTORY STRUCTURE
+////////////////////////////////////////////////////////////
+
+REPLACE history storage with this structure:
+
+type TeamTemplate = {
+  id: string
+  mode: "1pool" | "2pools" | "tournament"
+  createdAt: number
+  pools: {
+    A?: {
+      black: TeamStructure
+      white: TeamStructure
+    }
+    B?: {
+      black: TeamStructure
+      white: TeamStructure
+    }
+  }
+}
+
+type TeamStructure = {
+  formation: "3-3" | "1-3-2"
+  players: Array<{
+    playerId: string
+    assignedPosition: string
+  }>
+}
+
+IMPORTANT:
+History MUST NOT store:
+- rating
+- ratingBefore
+- ratingDelta
+- offHandUsed
+- match results
+- snapshots
+
+
+////////////////////////////////////////////////////////////
+4️⃣ LOADING FROM HISTORY
+////////////////////////////////////////////////////////////
+
+When rebuilding teams from template:
+
+For each player:
+- Look up player in globalPlayers store
+- Pull CURRENT rating
+- Apply stored formation
+- Apply stored assignedPosition
+- Apply stored pool + team colour
+
+NEVER use any stored rating values.
+
+
+////////////////////////////////////////////////////////////
+5️⃣ HISTORY LIMIT
+////////////////////////////////////////////////////////////
+
+Maintain:
+- Maximum 10 stored templates
+- If history.length > 10:
+    remove oldest template
+
+
+////////////////////////////////////////////////////////////
+6️⃣ SAFETY RULES
+////////////////////////////////////////////////////////////
+
+- Loading history must NOT modify ratings
+- Loading history must NOT create match result entries
+- Ratings only change inside Match Results logic
+- Confirming teams saves template ONLY
+
+
+////////////////////////////////////////////////////////////
+EXPECTED RESULT AFTER PASS 8
+////////////////////////////////////////////////////////////
+
+✔ Generate tab always opens clean
+✔ No auto-loaded teams
+✔ History is manual via button
+✔ Loading history uses live ratings
+✔ Confirm resets workspace
+✔ No rating corruption
+✔ Clear separation:
+    - Team templates
+    - Match result snapshots
+
+///////////////////////////////
+//// END FIX PASS 8
+///////////////////////////////

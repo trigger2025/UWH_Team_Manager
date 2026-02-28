@@ -43,7 +43,8 @@ Preferred communication style: Simple, everyday language.
 - **Explicit Selection**: Players must be explicitly selected before generation (none selected by default)
 - **Team Size Scaling**: No hardcoded team size. Players split evenly across 2 teams per pool. Extra players beyond formation size get default position.
 - **Re-roll**: Produces different team arrangements via random jitter in sort + random first-pick in snake draft. Each re-roll creates a new history entry.
-- **History**: Last 10 generated team states with Older/Newer navigation for rollback; history stores teamFormations and playerOffHandSelections. History loads on mount if available, even without generating new teams.
+- **Team Templates**: On Confirm, team structure is saved as a `TeamTemplate` (structure only, no ratings). Up to 10 templates stored. "Load Previous Teams" button opens a dialog to reload a template using current live ratings. Templates never store or modify ratings.
+- **Generate Tab Behavior**: Always opens in player selection state. No auto-loading of previous teams. Teams are cleared on mount unless locked for pending match.
 - **Manual Editing**: Move players between teams without automatic rebalancing. Position revalidated when moving to a team with a different formation (invalid positions get reassigned to default).
 - **Match Snapshots**: Confirm creates MatchTeamSnapshot with rating snapshots (ratingUsed, usedOffHand, team, position) for each player
 - **Rating System**: Delta-based. On match completion, stores `ratingDelta` and `ratingFieldUsed` in snapshot. On deletion, reverses via `currentRating -= ratingDelta`. Legacy snapshots with ratingBefore/ratingAfter are supported as fallback.

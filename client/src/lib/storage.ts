@@ -28,6 +28,7 @@ export const DEFAULT_GENERATION_WORKSPACE: GenerationWorkspace = {
   twoPoolsTeams: null,
   history: [],
   historyIndex: -1,
+  teamTemplates: [],
   pendingMatch: null,
   pendingMatchPoolA: null,
   pendingMatchPoolB: null,
@@ -78,7 +79,6 @@ function migrateWorkspace(saved: any): GenerationWorkspace {
   // Note: We don't auto-populate playerOffHandSelections from legacy useOffHandRatings
   // since the new model requires explicit per-player selection
   
-  // Migrate history snapshots
   if (saved.history && Array.isArray(saved.history)) {
     migrated.history = saved.history.map((snapshot: any) => ({
       id: snapshot.id,
@@ -93,6 +93,10 @@ function migrateWorkspace(saved: any): GenerationWorkspace {
       poolBFormations: snapshot.poolBFormations,
       playerOffHandSelections: snapshot.playerOffHandSelections || {}
     }));
+  }
+
+  if (saved.teamTemplates && Array.isArray(saved.teamTemplates)) {
+    migrated.teamTemplates = saved.teamTemplates;
   }
   
   return migrated;

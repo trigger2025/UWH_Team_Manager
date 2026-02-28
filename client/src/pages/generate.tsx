@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { generateTeams, cloneTeams, movePlayerBetweenTeams, FORMATION_ROLES, createMatchTeamSnapshot } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Users, 
   Swords, 
@@ -19,10 +20,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowLeftRight,
-  CheckCircle2
+  CheckCircle2,
+  Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PoolAssignment, TwoPoolsGeneratedTeams } from "@shared/schema";
+import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate } from "@shared/schema";
 import { useLocation } from "wouter";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
@@ -42,18 +44,19 @@ export default function GeneratePage() {
     players, 
     generationWorkspace,
     updateWorkspace,
-    addToHistory,
-    addToHistoryTwoPools,
-    restoreFromHistory,
     clearWorkspace,
     saveMatchResult,
     lockTeams,
     unlockTeams,
-    visibilitySettings
+    visibilitySettings,
+    saveTeamTemplate,
+    loadFromTemplate
   } = useApp();
   
   const { showRatings = true, showPositions = true } = visibilitySettings || {};
   const [, navigate] = useLocation();
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [showGenerated, setShowGenerated] = useState(false);
 
   const { 
     mode, 
@@ -65,8 +68,7 @@ export default function GeneratePage() {
     generatedTeams,
     poolAssignments,
     twoPoolsTeams,
-    history,
-    historyIndex,
+    teamTemplates,
     teamsLocked
   } = generationWorkspace;
 
@@ -190,7 +192,8 @@ export default function GeneratePage() {
       }
       
       const newTwoPoolsTeams = { poolA: poolATeams, poolB: poolBTeams };
-      addToHistoryTwoPools(newTwoPoolsTeams);
+      updateWorkspace({ twoPoolsTeams: newTwoPoolsTeams });
+      setShowGenerated(true);
     } else {
       // Standard mode
       const selectedPlayers = players.filter(p => selectedPlayerIds.includes(p.id));
@@ -201,7 +204,8 @@ export default function GeneratePage() {
         teamFormations,
         { playerOffHandSelections }
       );
-      addToHistory(result);
+      updateWorkspace({ generatedTeams: result });
+      setShowGenerated(true);
     }
   };
 
@@ -300,28 +304,27 @@ export default function GeneratePage() {
 
   const handleConfirm = () => {
     if (!generatedTeams) return;
-    
-    // Lock teams and navigate to Results - do NOT create match record yet
-    // Match will be created when user enters scores on Results page
+    saveTeamTemplate(generatedTeams, null);
     lockTeams();
-    
-    // Navigate to results
     navigate("/results");
   };
 
   const handleConfirmTwoPools = () => {
     if (!twoPoolsTeams) return;
-    
-    // Lock teams and navigate to Results - do NOT create match records yet
-    // Matches will be created when user enters scores on Results page
+    saveTeamTemplate(null, twoPoolsTeams);
     lockTeams();
-    
-    // Navigate to results
     navigate("/results");
   };
 
+  const handleLoadTemplate = (template: TeamTemplate) => {
+    loadFromTemplate(template);
+    setShowTemplateDialog(false);
+    setShowGenerated(true);
+  };
+
   const handleClearTeams = () => {
-    updateWorkspace({ generatedTeams: null });
+    updateWorkspace({ generatedTeams: null, twoPoolsTeams: null });
+    setShowGenerated(false);
   };
 
   // Get unique positions for display (using black team formation as default)
@@ -337,18 +340,9 @@ export default function GeneratePage() {
   
   const canGenerate = mode === "two_pools" ? canGenerateTwoPools : canGenerateStandard;
   
-  // Check if we have generated teams to show
-  const hasGeneratedTeams = mode === "two_pools" 
+  const hasGeneratedTeams = showGenerated && (mode === "two_pools" 
     ? (twoPoolsTeams?.poolA || twoPoolsTeams?.poolB) 
-    : generatedTeams;
-
-  // Initialize workspace from last history entry if history exists but no teams are generated
-  useEffect(() => {
-    if (!hasGeneratedTeams && history.length > 0) {
-      const idx = Math.min(historyIndex, history.length - 1);
-      restoreFromHistory(Math.max(0, idx));
-    }
-  }, []); // Only on mount
+    : generatedTeams);
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -747,7 +741,18 @@ export default function GeneratePage() {
                 </Card>
               )}
 
-              {/* Generate Button */}
+              {/* Load Previous Teams + Generate Button */}
+              {(teamTemplates || []).length > 0 && (
+                <Button
+                  variant="outline"
+                  className="w-full h-10 rounded-xl gap-2 text-sm"
+                  onClick={() => setShowTemplateDialog(true)}
+                  data-testid="button-load-previous"
+                >
+                  <History className="h-4 w-4" />
+                  Load Previous Teams
+                </Button>
+              )}
               <Button 
                 className="w-full h-12 rounded-xl text-base font-bold gap-2 shadow-lg shadow-primary/20"
                 disabled={!canGenerate}
@@ -765,40 +770,6 @@ export default function GeneratePage() {
               animate={{ opacity: 1, scale: 1 }}
               className="space-y-4"
             >
-              {/* History Navigation for Two Pools */}
-              {history.length > 1 && (
-                <div className="flex items-center justify-between px-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={historyIndex >= history.length - 1}
-                    onClick={() => restoreFromHistory(historyIndex + 1)}
-                    className="text-xs gap-1 h-7"
-                    data-testid="button-history-prev-twopools"
-                  >
-                    <ChevronLeft className="h-3 w-3" />
-                    Older
-                  </Button>
-                  <div className="flex items-center gap-1.5">
-                    <History className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">
-                      {historyIndex + 1} / {history.length}
-                    </span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={historyIndex <= 0}
-                    onClick={() => restoreFromHistory(historyIndex - 1)}
-                    className="text-xs gap-1 h-7"
-                    data-testid="button-history-next-twopools"
-                  >
-                    Newer
-                    <ChevronRight className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-
               {/* Pool A Teams */}
               {twoPoolsTeams.poolA && (
                 <div className="space-y-3">
@@ -876,7 +847,7 @@ export default function GeneratePage() {
                 <Button 
                   variant="outline" 
                   className="w-full h-10 rounded-xl gap-2 text-sm"
-                  onClick={() => updateWorkspace({ twoPoolsTeams: null })}
+                  onClick={() => { updateWorkspace({ twoPoolsTeams: null }); setShowGenerated(false); }}
                   data-testid="button-reselect"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -910,40 +881,6 @@ export default function GeneratePage() {
               animate={{ opacity: 1, scale: 1 }}
               className="space-y-4"
             >
-              {/* History Navigation */}
-              {history.length > 1 && (
-                <div className="flex items-center justify-between px-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={historyIndex >= history.length - 1}
-                    onClick={() => restoreFromHistory(historyIndex + 1)}
-                    className="text-xs gap-1 h-7"
-                    data-testid="button-history-prev"
-                  >
-                    <ChevronLeft className="h-3 w-3" />
-                    Older
-                  </Button>
-                  <div className="flex items-center gap-1.5">
-                    <History className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">
-                      {historyIndex + 1} / {history.length}
-                    </span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={historyIndex <= 0}
-                    onClick={() => restoreFromHistory(historyIndex - 1)}
-                    className="text-xs gap-1 h-7"
-                    data-testid="button-history-next"
-                  >
-                    Newer
-                    <ChevronRight className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-
               {/* Team Cards */}
               <div className="grid grid-cols-1 gap-3">
                 {/* Black Team */}
@@ -1006,6 +943,57 @@ export default function GeneratePage() {
           ) : null}
         </AnimatePresence>
       </div>
+
+      <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
+        <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Previous Teams
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            {(teamTemplates || []).map((template) => {
+              const poolKeys = Object.keys(template.pools);
+              const playerCount = poolKeys.reduce((sum, key) => {
+                const pool = template.pools[key as "A" | "B"];
+                return sum + (pool?.black.players.length || 0) + (pool?.white.players.length || 0);
+              }, 0);
+              const date = new Date(template.createdAt);
+              const isTwoPools = template.mode === "two_pools" || (template.pools.A && template.pools.B);
+              return (
+                <Card
+                  key={template.id}
+                  className="cursor-pointer hover:bg-accent/50 transition-colors border-border/50"
+                  onClick={() => handleLoadTemplate(template)}
+                  data-testid={`template-${template.id}`}
+                >
+                  <CardContent className="p-3 flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium flex items-center gap-1.5">
+                        {isTwoPools ? (
+                          <Badge variant="outline" className="text-[9px] px-1.5 py-0">2 Pools</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[9px] px-1.5 py-0">Standard</Badge>
+                        )}
+                        <span className="text-muted-foreground text-xs">{playerCount} players</span>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </CardContent>
+                </Card>
+              );
+            })}
+            {(teamTemplates || []).length === 0 && (
+              <p className="text-center text-sm text-muted-foreground py-4">No previous teams saved.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <BottomNav />
     </div>

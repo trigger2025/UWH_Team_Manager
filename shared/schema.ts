@@ -182,23 +182,20 @@ export interface TeamFormations {
 // Generation workspace state (persisted globally)
 export interface GenerationWorkspace {
   mode: GenerationMode;
-  teamFormations: TeamFormations; // Per-team formations for standard mode
-  // Per-pool formations for 2 pools mode
+  teamFormations: TeamFormations;
   poolAFormations: TeamFormations;
   poolBFormations: TeamFormations;
   selectedPlayerIds: number[];
-  playerOffHandSelections: PlayerOffHandSelection; // Per-player off-hand toggle
+  playerOffHandSelections: PlayerOffHandSelection;
   generatedTeams: { black: GeneratedTeam; white: GeneratedTeam } | null;
-  // Two pools mode specific
-  poolAssignments: Record<number, PoolAssignment>; // playerId -> pool
+  poolAssignments: Record<number, PoolAssignment>;
   twoPoolsTeams: TwoPoolsGeneratedTeams | null;
   history: GeneratedTeamsSnapshot[];
-  historyIndex: number; // Current position in history (-1 = none)
-  // Pending matches for Results page (created on Confirm but not saved until scores entered)
+  historyIndex: number;
+  teamTemplates: TeamTemplate[];
   pendingMatch: PendingMatch | null;
-  pendingMatchPoolA: PendingMatch | null; // For 2 pools mode
-  pendingMatchPoolB: PendingMatch | null; // For 2 pools mode
-  // Whether teams are locked (confirmed but not yet saved)
+  pendingMatchPoolA: PendingMatch | null;
+  pendingMatchPoolB: PendingMatch | null;
   teamsLocked: boolean;
 }
 
@@ -215,17 +212,46 @@ export interface VisibilitySettings {
   showPositions: boolean;
 }
 
+export interface TeamTemplatePlayerEntry {
+  playerId: number;
+  assignedPosition: string;
+  usedOffHand: boolean;
+}
+
+export interface TeamTemplateStructure {
+  formation: FormationType;
+  players: TeamTemplatePlayerEntry[];
+}
+
+export interface TeamTemplate {
+  id: string;
+  mode: GenerationMode;
+  createdAt: number;
+  pools: {
+    A?: {
+      black: TeamTemplateStructure;
+      white: TeamTemplateStructure;
+    };
+    B?: {
+      black: TeamTemplateStructure;
+      white: TeamTemplateStructure;
+    };
+  };
+  teamFormations: TeamFormations;
+  poolAFormations?: TeamFormations;
+  poolBFormations?: TeamFormations;
+  playerOffHandSelections: PlayerOffHandSelection;
+  poolAssignments?: Record<number, PoolAssignment>;
+}
+
 export interface GeneratedTeamsSnapshot {
   id: number;
   timestamp: string;
-  // For standard mode
   teams?: { black: GeneratedTeam; white: GeneratedTeam };
-  // For two pools mode
   twoPoolsTeams?: TwoPoolsGeneratedTeams;
   poolAssignments?: Record<number, PoolAssignment>;
   mode: GenerationMode;
   teamFormations: TeamFormations;
-  // Per-pool formations for 2 pools mode
   poolAFormations?: TeamFormations;
   poolBFormations?: TeamFormations;
   playerOffHandSelections: PlayerOffHandSelection;
