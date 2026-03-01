@@ -19,7 +19,8 @@ import {
   X,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Crosshair
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -40,6 +41,11 @@ export default function SettingsPage() {
   const kFactorSetting = adminSettings.find(s => s.key === "rating_strength");
   const currentKFactor = kFactorSetting ? parseInt(kFactorSetting.value as string) : 32;
   const [kFactorInput, setKFactorInput] = useState(currentKFactor.toString());
+
+  const mainPosSetting = adminSettings.find(s => s.key === "main_position_bonus");
+  const currentMainPosBonus = mainPosSetting ? parseInt(mainPosSetting.value as string) : 4;
+  const altPosSetting = adminSettings.find(s => s.key === "alternate_position_bonus");
+  const currentAltPosBonus = altPosSetting ? parseInt(altPosSetting.value as string) : 2;
 
   useEffect(() => {
     setKFactorInput(currentKFactor.toString());
@@ -146,6 +152,48 @@ export default function SettingsPage() {
                 Higher values make ratings change more quickly after each game. Range: 0 (no change) to 100.
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/50">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Crosshair className="h-4 w-4 text-emerald-500" />
+              Position Assignment
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs text-muted-foreground">Main Position Bonus</Label>
+                <span className="font-mono font-bold text-primary text-sm" data-testid="text-main-pos-bonus">{currentMainPosBonus}</span>
+              </div>
+              <Slider
+                value={[currentMainPosBonus]}
+                min={0}
+                max={10}
+                step={1}
+                onValueChange={(value) => updateAdminSetting("main_position_bonus", value[0].toString())}
+                data-testid="slider-main-position-bonus"
+              />
+            </div>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <Label className="text-xs text-muted-foreground">Alternate Position Bonus</Label>
+                <span className="font-mono font-bold text-primary text-sm" data-testid="text-alt-pos-bonus">{currentAltPosBonus}</span>
+              </div>
+              <Slider
+                value={[currentAltPosBonus]}
+                min={0}
+                max={10}
+                step={1}
+                onValueChange={(value) => updateAdminSetting("alternate_position_bonus", value[0].toString())}
+                data-testid="slider-alternate-position-bonus"
+              />
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              Higher values give stronger preference to players' main and alternate positions during team generation. Range: 0 (ignore preferences) to 10.
+            </p>
           </CardContent>
         </Card>
 

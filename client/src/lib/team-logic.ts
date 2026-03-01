@@ -1,10 +1,5 @@
-import { Player, FormationType, FormationPosition, GeneratedTeam, PlayerWithAssignedFormationRole, MatchTeamSnapshot, PlayerRatingSnapshot, PlayerOffHandSelection } from "@shared/schema";
+import { Player, FormationType, FormationPosition, GeneratedTeam, PlayerWithAssignedFormationRole, MatchTeamSnapshot, PlayerRatingSnapshot, PlayerOffHandSelection, AdminSettings } from "@shared/schema";
 
-/**
- * Canonical roles for each supported formation (matching schema positions exactly)
- * 3-3: Forward, Centre, Half Back, Centre Back (6 players)
- * 1-3-2: Forward, Wing, Centre, Back (6 players, Wing used twice)
- */
 export const FORMATION_ROLES: Record<FormationType, FormationPosition[]> = {
   "3-3": [
     "Forward", "Forward", "Forward",
@@ -16,6 +11,72 @@ export const FORMATION_ROLES: Record<FormationType, FormationPosition[]> = {
     "Back", "Back"
   ]
 };
+
+const FORMATION_COMPATIBILITY: Record<FormationType, Record<string, Record<string, number>>> = {
+  "3-3": {
+    Forward: { Forward: 3, Centre: 2, "Half Back": 1, "Centre Back": 0 },
+    Centre: { Forward: 2, Centre: 3, "Half Back": 2, "Centre Back": 1 },
+    "Half Back": { Forward: 1, Centre: 1, "Half Back": 3, "Centre Back": 2 },
+    "Centre Back": { Forward: 0, Centre: 1, "Half Back": 2, "Centre Back": 3 },
+  },
+  "1-3-2": {
+    Forward: { Forward: 3, Wing: 2, Centre: 1, Back: 0 },
+    Wing: { Forward: 2, Wing: 3, Centre: 2, Back: 1 },
+    Centre: { Forward: 1, Wing: 2, Centre: 3, Back: 2 },
+    Back: { Forward: 0, Wing: 1, Centre: 2, Back: 3 },
+  },
+};
+
+const BASE_SLOT_STRUCTURES: Record<FormationType, Record<string, number>> = {
+  "3-3": { Forward: 2, Centre: 1, "Half Back": 2, "Centre Back": 1 },
+  "1-3-2": { Forward: 1, Wing: 2, Centre: 1, Back: 2 },
+};
+
+const EXTRA_SLOT_PRIORITY: Record<FormationType, string[]> = {
+  "3-3": ["Forward", "Half Back", "Centre", "Centre Back"],
+  "1-3-2": ["Back", "Wing", "Centre", "Forward"],
+};
+
+export function getPositionBonusSettings(adminSettings: AdminSettings[]): { mainPositionBonus: number; alternatePositionBonus: number } {
+  const mainSetting = adminSettings.find(s => s.key === "main_position_bonus");
+  const altSetting = adminSettings.find(s => s.key === "alternate_position_bonus");
+  return {
+    mainPositionBonus: mainSetting ? parseInt(mainSetting.value as string) : 4,
+    alternatePositionBonus: altSetting ? parseInt(altSetting.value as string) : 2,
+  };
+}
+
+function getCompatibilityScore(
+  mainPosition: string | undefined,
+  alternates: string[] | undefined,
+  slot: string,
+  formation: FormationType,
+  mainBonus: number,
+  altBonus: number
+): number {
+  const base = mainPosition ? (FORMATION_COMPATIBILITY[formation][mainPosition]?.[slot] ?? 0) : 0;
+  let bonus = 0;
+  if (slot === mainPosition) bonus += mainBonus;
+  if (alternates?.includes(slot)) bonus += altBonus;
+  return base + bonus;
+}
+
+function buildSlotTargets(formation: FormationType, teamSize: number): Record<string, number> {
+  const base = { ...BASE_SLOT_STRUCTURES[formation] };
+  const totalBase = Object.values(base).reduce((s, v) => s + v, 0);
+  if (teamSize <= totalBase) return base;
+
+  const slots = { ...base };
+  let remaining = teamSize - totalBase;
+  const priority = EXTRA_SLOT_PRIORITY[formation];
+  let index = 0;
+  while (remaining > 0) {
+    slots[priority[index % priority.length]] += 1;
+    remaining--;
+    index++;
+  }
+  return slots;
+}
 
 /**
  * Gets the effective rating for a player based on per-player off-hand selection
@@ -45,102 +106,74 @@ export function validateFormation(players: Player[], formation: FormationType): 
   };
 }
 
-/**
- * Assigns players to specific roles within a formation based on their preferences
- */
 export function assignFormationRoles(
   players: Player[], 
   formation: FormationType,
-  playerOffHandSelections: PlayerOffHandSelection = {}
+  playerOffHandSelections: PlayerOffHandSelection = {},
+  adminSettings: AdminSettings[] = []
 ): PlayerWithAssignedFormationRole[] {
-  const roles = [...FORMATION_ROLES[formation]];
-  const assignedPlayers: PlayerWithAssignedFormationRole[] = [];
-  const unassignedPlayers = [...players];
+  const { mainPositionBonus, alternatePositionBonus } = getPositionBonusSettings(adminSettings);
+  const teamSize = players.length;
+  const slotTargets = buildSlotTargets(formation, teamSize);
 
-  // Sort by effective rating descending
-  unassignedPlayers.sort((a, b) => {
-    const aRating = getEffectiveRating(a, playerOffHandSelections).rating;
-    const bRating = getEffectiveRating(b, playerOffHandSelections).rating;
-    return bRating - aRating;
-  });
+  const assigned: PlayerWithAssignedFormationRole[] = [];
+  const unassigned = [...players];
 
-  // 1. Try to assign main position preferences
-  const stillUnassigned: Player[] = [];
-  for (const player of unassignedPlayers) {
+  for (let i = unassigned.length - 1; i >= 0; i--) {
+    const player = unassigned[i];
     const pref = (player.formationPreferences as any)?.[formation];
-    const roleIndex = roles.indexOf(pref?.main);
-    
-    if (pref?.main && roleIndex !== -1) {
-      const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
-      assignedPlayers.push({
-        ...player,
-        assignedPosition: pref.main as FormationPosition,
-        formationRole: "main",
-        ratingUsed: rating,
-        usedOffHand
-      });
-      roles.splice(roleIndex, 1);
-    } else {
-      stillUnassigned.push(player);
+    const mainPos = pref?.main as string | undefined;
+    const alts = pref?.alternates as string[] | undefined;
+
+    if (!alts || alts.length === 0) {
+      if (mainPos && slotTargets[mainPos] && slotTargets[mainPos] > 0) {
+        const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
+        assigned.push({ ...player, assignedPosition: mainPos as FormationPosition, formationRole: "main", ratingUsed: rating, usedOffHand });
+        slotTargets[mainPos]--;
+        unassigned.splice(i, 1);
+      }
     }
   }
 
-  // 2. Try to assign alternate position preferences
-  const finalUnassigned: Player[] = [];
-  for (const player of stillUnassigned) {
-    const pref = (player.formationPreferences as any)?.[formation];
-    const altRole = pref?.alternates?.find((alt: string) => roles.includes(alt as FormationPosition));
-    
-    if (altRole) {
-      const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
-      assignedPlayers.push({
-        ...player,
-        assignedPosition: altRole as FormationPosition,
-        formationRole: "alternate",
-        ratingUsed: rating,
-        usedOffHand
-      });
-      roles.splice(roles.indexOf(altRole as FormationPosition), 1);
-    } else {
-      finalUnassigned.push(player);
+  while (unassigned.length > 0) {
+    let bestChoice: { player: Player; slot: string; score: number; idx: number } | null = null;
+
+    for (let i = 0; i < unassigned.length; i++) {
+      const player = unassigned[i];
+      const pref = (player.formationPreferences as any)?.[formation];
+      const mainPos = pref?.main as string | undefined;
+      const alts = pref?.alternates as string[] | undefined;
+
+      for (const slot in slotTargets) {
+        if (slotTargets[slot] <= 0) continue;
+        const score = getCompatibilityScore(mainPos, alts, slot, formation, mainPositionBonus, alternatePositionBonus);
+        if (!bestChoice || score > bestChoice.score) {
+          bestChoice = { player, slot, score, idx: i };
+        }
+      }
     }
+
+    if (!bestChoice) break;
+
+    const { rating, usedOffHand } = getEffectiveRating(bestChoice.player, playerOffHandSelections);
+    const pref = (bestChoice.player.formationPreferences as any)?.[formation];
+    const mainPos = pref?.main as string | undefined;
+    const alts = pref?.alternates as string[] | undefined;
+    let role: "main" | "alternate" | "filler" = "filler";
+    if (bestChoice.slot === mainPos) role = "main";
+    else if (alts?.includes(bestChoice.slot)) role = "alternate";
+
+    assigned.push({ ...bestChoice.player, assignedPosition: bestChoice.slot as FormationPosition, formationRole: role, ratingUsed: rating, usedOffHand });
+    slotTargets[bestChoice.slot]--;
+    unassigned.splice(bestChoice.idx, 1);
   }
 
-  // 3. Fill remaining roles by best fit (rating order)
-  const extraPlayers: Player[] = [];
-  for (const player of finalUnassigned) {
-    if (roles.length > 0) {
-      const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
-      assignedPlayers.push({
-        ...player,
-        assignedPosition: roles.shift()!,
-        formationRole: "filler",
-        ratingUsed: rating,
-        usedOffHand
-      });
-    } else {
-      extraPlayers.push(player);
-    }
-  }
-
-  // 4. Handle extra players beyond formation size - assign default position
-  const defaultPosition = FORMATION_ROLES[formation][0];
-  for (const player of extraPlayers) {
-    const { rating, usedOffHand } = getEffectiveRating(player, playerOffHandSelections);
-    assignedPlayers.push({
-      ...player,
-      assignedPosition: defaultPosition,
-      formationRole: "filler",
-      ratingUsed: rating,
-      usedOffHand
-    });
-  }
-
-  return assignedPlayers;
+  return assigned;
 }
 
 export interface GenerateTeamsOptions {
   playerOffHandSelections: PlayerOffHandSelection;
+  adminSettings?: AdminSettings[];
 }
 
 /**
@@ -151,7 +184,7 @@ export function generateTeams(
   teamFormationMap: { black: FormationType; white: FormationType },
   options: GenerateTeamsOptions = { playerOffHandSelections: {} }
 ): { black: GeneratedTeam; white: GeneratedTeam } {
-  const { playerOffHandSelections } = options;
+  const { playerOffHandSelections, adminSettings = [] } = options;
   
   // Sort players by effective rating descending with slight random jitter for variety
   const sortedPlayers = [...availablePlayers].sort((a, b) => {
@@ -220,8 +253,8 @@ export function generateTeams(
     } else break;
   }
 
-  const blackAssigned = assignFormationRoles(blackPlayers, teamFormationMap.black, playerOffHandSelections);
-  const whiteAssigned = assignFormationRoles(whitePlayers, teamFormationMap.white, playerOffHandSelections);
+  const blackAssigned = assignFormationRoles(blackPlayers, teamFormationMap.black, playerOffHandSelections, adminSettings);
+  const whiteAssigned = assignFormationRoles(whitePlayers, teamFormationMap.white, playerOffHandSelections, adminSettings);
 
   return {
     black: {
@@ -266,7 +299,8 @@ export function reJigTeams(
 export function movePlayerBetweenTeams(
   teams: { black: GeneratedTeam; white: GeneratedTeam },
   playerId: number,
-  toTeam: "Black" | "White"
+  toTeam: "Black" | "White",
+  adminSettings: AdminSettings[] = []
 ): { black: GeneratedTeam; white: GeneratedTeam } {
   const sourceKey = toTeam === "Black" ? "white" : "black";
   const targetKey = toTeam === "Black" ? "black" : "white";
@@ -274,27 +308,29 @@ export function movePlayerBetweenTeams(
   const playerIndex = teams[sourceKey].players.findIndex(p => p.id === playerId);
   if (playerIndex === -1) return teams;
   
-  // Clone to avoid mutation
   const newTeams = {
     black: { ...teams.black, players: [...teams.black.players.map(p => ({ ...p }))] },
     white: { ...teams.white, players: [...teams.white.players.map(p => ({ ...p }))] }
   };
   
   const [player] = newTeams[sourceKey].players.splice(playerIndex, 1);
-  
-  // Revalidate position if target team has a different formation
-  const targetFormation = newTeams[targetKey].formation;
-  const validPositions = FORMATION_ROLES[targetFormation];
-  if (!validPositions.includes(player.assignedPosition)) {
-    player.assignedPosition = FORMATION_ROLES[targetFormation][0];
-    player.formationRole = "filler";
+  newTeams[targetKey].players.push(player);
+
+  const offHandMap: PlayerOffHandSelection = {};
+  for (const p of [...newTeams[sourceKey].players, ...newTeams[targetKey].players]) {
+    if (p.usedOffHand) offHandMap[p.id] = true;
   }
   
-  newTeams[targetKey].players.push(player);
+  const sourceBasePlayers = newTeams[sourceKey].players.map(p => p as Player);
+  const targetBasePlayers = newTeams[targetKey].players.map(p => p as Player);
   
-  // Recalculate totals
-  newTeams[sourceKey].totalRating = newTeams[sourceKey].players.reduce((sum, p) => sum + p.ratingUsed, 0);
-  newTeams[targetKey].totalRating = newTeams[targetKey].players.reduce((sum, p) => sum + p.ratingUsed, 0);
+  const sourceReassigned = assignFormationRoles(sourceBasePlayers, newTeams[sourceKey].formation, offHandMap, adminSettings);
+  const targetReassigned = assignFormationRoles(targetBasePlayers, newTeams[targetKey].formation, offHandMap, adminSettings);
+  
+  newTeams[sourceKey].players = sourceReassigned;
+  newTeams[targetKey].players = targetReassigned;
+  newTeams[sourceKey].totalRating = sourceReassigned.reduce((sum, p) => sum + p.ratingUsed, 0);
+  newTeams[targetKey].totalRating = targetReassigned.reduce((sum, p) => sum + p.ratingUsed, 0);
   
   return newTeams;
 }

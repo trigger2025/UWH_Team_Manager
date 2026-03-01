@@ -61,6 +61,14 @@ Preferred communication style: Simple, everyday language.
 - **Pool Assignments Map**: Stored in workspace as `poolAssignments: Record<number, PoolAssignment>` where PoolAssignment is "A" | "B"
 - **twoPoolsTeams**: Stores `{ poolA: StandardGeneratedTeams | null, poolB: StandardGeneratedTeams | null }`
 
+## Intelligent Position Engine
+- **Compatibility Matrix**: Formation-specific position compatibility scores (0-3 scale) determine how well a player's preferred position maps to each slot
+- **Admin Settings**: `main_position_bonus` (default 4) and `alternate_position_bonus` (default 2) — configurable via sliders in Settings page (range 0-10)
+- **Slot Targets**: Dynamic slot target counts based on formation and team size; extra players beyond base 6 are distributed by priority order
+- **Assignment Algorithm**: Two-pass — specialists (no alternates) get their main position first, then remaining players assigned by highest compatibility score
+- **Manual Move Reassignment**: When players are moved between teams or pools, all positions on affected teams are fully reassigned using the intelligent engine
+- **Base Slot Structures**: 3-3: Forward(2), Centre(1), Half Back(2), Centre Back(1); 1-3-2: Forward(1), Wing(2), Centre(1), Back(2)
+
 ## Visibility Settings
 - **Settings Storage**: Stored in context as `visibilitySettings: { showRatings: boolean, showPositions: boolean }`
 - **Default Values**: Both `showRatings` and `showPositions` default to `true`

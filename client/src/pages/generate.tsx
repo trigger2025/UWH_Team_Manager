@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
-import { generateTeams, cloneTeams, movePlayerBetweenTeams, FORMATION_ROLES, createMatchTeamSnapshot } from "@/lib/team-logic";
+import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, FORMATION_ROLES, createMatchTeamSnapshot } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import {
   Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate } from "@shared/schema";
+import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player } from "@shared/schema";
 import { useLocation } from "wouter";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
@@ -50,7 +50,8 @@ export default function GeneratePage() {
     unlockTeams,
     visibilitySettings,
     saveTeamTemplate,
-    loadFromTemplate
+    loadFromTemplate,
+    adminSettings
   } = useApp();
   
   const { showRatings = true, showPositions = true } = visibilitySettings || {};
@@ -178,16 +179,16 @@ export default function GeneratePage() {
       if (poolAPlayerObjs.length >= 2) {
         poolATeams = generateTeams(
           poolAPlayerObjs,
-          poolAFormations, // Use Pool A formations
-          { playerOffHandSelections }
+          poolAFormations,
+          { playerOffHandSelections, adminSettings }
         );
       }
       
       if (poolBPlayerObjs.length >= 2) {
         poolBTeams = generateTeams(
           poolBPlayerObjs,
-          poolBFormations, // Use Pool B formations
-          { playerOffHandSelections }
+          poolBFormations,
+          { playerOffHandSelections, adminSettings }
         );
       }
       
@@ -202,7 +203,7 @@ export default function GeneratePage() {
       const result = generateTeams(
         selectedPlayers, 
         teamFormations,
-        { playerOffHandSelections }
+        { playerOffHandSelections, adminSettings }
       );
       updateWorkspace({ generatedTeams: result });
       setShowGenerated(true);
@@ -217,7 +218,7 @@ export default function GeneratePage() {
     if (!generatedTeams) return;
     
     const cloned = cloneTeams(generatedTeams);
-    const updated = movePlayerBetweenTeams(cloned, playerId, toTeam);
+    const updated = movePlayerBetweenTeams(cloned, playerId, toTeam, adminSettings);
     
     updateWorkspace({ generatedTeams: updated });
   };
@@ -228,7 +229,7 @@ export default function GeneratePage() {
     if (!poolTeams) return;
     
     const cloned = cloneTeams(poolTeams);
-    const updated = movePlayerBetweenTeams(cloned, playerId, toTeam);
+    const updated = movePlayerBetweenTeams(cloned, playerId, toTeam, adminSettings);
     
     if (pool === "A") {
       updateWorkspace({ twoPoolsTeams: { ...twoPoolsTeams, poolA: updated } });
@@ -264,7 +265,19 @@ export default function GeneratePage() {
     
     const newSource = cloneTeams(sourceTeams);
     newSource[sourceTeamKey].players = newSource[sourceTeamKey].players.filter(p => p.id !== playerId);
-    newSource[sourceTeamKey].totalRating = newSource[sourceTeamKey].players.reduce((s, p) => s + p.ratingUsed, 0);
+
+    const sourceOffHandMap: PlayerOffHandSelection = {};
+    for (const p of [...newSource.black.players, ...newSource.white.players]) {
+      if (p.usedOffHand) sourceOffHandMap[p.id] = true;
+    }
+    const sourceReassigned = assignFormationRoles(
+      newSource[sourceTeamKey].players.map(p => p as Player),
+      newSource[sourceTeamKey].formation,
+      sourceOffHandMap,
+      adminSettings
+    );
+    newSource[sourceTeamKey].players = sourceReassigned;
+    newSource[sourceTeamKey].totalRating = sourceReassigned.reduce((s, p) => s + p.ratingUsed, 0);
     
     let newTarget: { black: GeneratedTeam; white: GeneratedTeam };
     if (targetTeams) {
@@ -277,15 +290,20 @@ export default function GeneratePage() {
     }
     
     const targetTeamKey = sourceTeamKey;
-    // Revalidate position if target pool team has different formation
-    const targetFormation = newTarget[targetTeamKey].formation;
-    const validPositions = FORMATION_ROLES[targetFormation];
-    if (!validPositions.includes(playerData.assignedPosition)) {
-      playerData.assignedPosition = FORMATION_ROLES[targetFormation][0];
-      playerData.formationRole = "filler";
-    }
     newTarget[targetTeamKey].players.push(playerData);
-    newTarget[targetTeamKey].totalRating = newTarget[targetTeamKey].players.reduce((s, p) => s + p.ratingUsed, 0);
+
+    const offHandMap: PlayerOffHandSelection = {};
+    for (const p of [...newTarget.black.players, ...newTarget.white.players]) {
+      if (p.usedOffHand) offHandMap[p.id] = true;
+    }
+    const reassigned = assignFormationRoles(
+      newTarget[targetTeamKey].players.map(p => p as Player),
+      newTarget[targetTeamKey].formation,
+      offHandMap,
+      adminSettings
+    );
+    newTarget[targetTeamKey].players = reassigned;
+    newTarget[targetTeamKey].totalRating = reassigned.reduce((s, p) => s + p.ratingUsed, 0);
     
     const newPoolAssignments: Record<number, PoolAssignment> = { ...poolAssignments, [playerId]: toPool as PoolAssignment };
     

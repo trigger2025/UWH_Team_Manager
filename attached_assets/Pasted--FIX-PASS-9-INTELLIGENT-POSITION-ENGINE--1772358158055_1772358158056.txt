@@ -1,0 +1,241 @@
+// ===============================
+// FIX PASS 9 – INTELLIGENT POSITION ENGINE
+// ===============================
+
+// --------------------------------
+// 1. SETTINGS UPDATE
+// --------------------------------
+
+// In your AdminSettings type add:
+mainPositionBonus: number;
+alternatePositionBonus: number;
+
+// Default values (where settings are initialised):
+mainPositionBonus: 4,
+alternatePositionBonus: 2,
+
+
+// --------------------------------
+// 2. SETTINGS UI SLIDERS
+// --------------------------------
+
+// In Settings screen add:
+
+<div className="setting-group">
+  <label>Main Position Bonus: {adminSettings.mainPositionBonus}</label>
+  <input
+    type="range"
+    min="1"
+    max="5"
+    value={adminSettings.mainPositionBonus}
+    onChange={(e) =>
+      updateAdminSettings({
+        ...adminSettings,
+        mainPositionBonus: Number(e.target.value),
+      })
+    }
+  />
+</div>
+
+<div className="setting-group">
+  <label>Alternate Position Bonus: {adminSettings.alternatePositionBonus}</label>
+  <input
+    type="range"
+    min="1"
+    max="5"
+    value={adminSettings.alternatePositionBonus}
+    onChange={(e) =>
+      updateAdminSettings({
+        ...adminSettings,
+        alternatePositionBonus: Number(e.target.value),
+      })
+    }
+  />
+</div>
+
+
+// --------------------------------
+// 3. BASE FORMATION COMPATIBILITY
+// --------------------------------
+
+const formationCompatibility = {
+  "3-3": {
+    Forward: { Forward: 3, Centre: 2, "Half Back": 1, "Centre Back": 0 },
+    Centre: { Forward: 2, Centre: 3, "Half Back": 2, "Centre Back": 1 },
+    "Half Back": { Forward: 1, Centre: 1, "Half Back": 3, "Centre Back": 2 },
+    "Centre Back": { Forward: 0, Centre: 1, "Half Back": 2, "Centre Back": 3 },
+  },
+  "1-3-2": {
+    Forward: { Forward: 3, Wing: 2, Centre: 1, Back: 0 },
+    Wing: { Forward: 2, Wing: 3, Centre: 2, Back: 1 },
+    Centre: { Forward: 1, Wing: 2, Centre: 3, Back: 2 },
+    Back: { Forward: 0, Wing: 1, Centre: 2, Back: 3 },
+  },
+};
+
+
+// --------------------------------
+// 4. DYNAMIC COMPATIBILITY SCORE
+// --------------------------------
+
+function getCompatibilityScore(
+  player,
+  slot,
+  formation,
+  mainBonus,
+  altBonus
+) {
+  const base =
+    formationCompatibility[formation][player.mainPosition]?.[slot] ?? 0;
+
+  let bonus = 0;
+
+  if (slot === player.mainPosition) {
+    bonus += mainBonus;
+  }
+
+  if (player.alternatePositions?.includes(slot)) {
+    bonus += altBonus;
+  }
+
+  return base + bonus;
+}
+
+
+// --------------------------------
+// 5. SLOT TARGET GENERATION
+// --------------------------------
+
+function buildSlotTargets(formation, teamSize) {
+  const baseStructures = {
+    "3-3": {
+      Forward: 2,
+      Centre: 1,
+      "Half Back": 2,
+      "Centre Back": 1,
+    },
+    "1-3-2": {
+      Forward: 1,
+      Wing: 2,
+      Centre: 1,
+      Back: 2,
+    },
+  };
+
+  const base = baseStructures[formation];
+  const totalBase = 6;
+
+  if (teamSize <= 6) {
+    return { ...base };
+  }
+
+  const slots = { ...base };
+
+  let remaining = teamSize - totalBase;
+
+  const priorityOrder =
+    formation === "3-3"
+      ? ["Forward", "Half Back", "Centre", "Centre Back"]
+      : ["Back", "Wing", "Centre", "Forward"];
+
+  let index = 0;
+
+  while (remaining > 0) {
+    const role = priorityOrder[index % priorityOrder.length];
+    slots[role] += 1;
+    remaining--;
+    index++;
+  }
+
+  return slots;
+}
+
+
+// --------------------------------
+// 6. ASSIGN POSITIONS TO TEAM
+// --------------------------------
+
+function assignPositionsToTeam(
+  players,
+  formation,
+  adminSettings
+) {
+  const teamSize = players.length;
+
+  const slotTargets = buildSlotTargets(formation, teamSize);
+
+  const assigned = [];
+
+  const unassigned = [...players];
+
+  // Specialist pass (players with no alternates)
+  for (let i = unassigned.length - 1; i >= 0; i--) {
+    const player = unassigned[i];
+
+    if (!player.alternatePositions || player.alternatePositions.length === 0) {
+      const preferred = player.mainPosition;
+
+      if (slotTargets[preferred] > 0) {
+        assigned.push({ ...player, assignedPosition: preferred });
+        slotTargets[preferred]--;
+        unassigned.splice(i, 1);
+      }
+    }
+  }
+
+  // Compatibility assignment pass
+  while (unassigned.length > 0) {
+    let bestChoice = null;
+
+    for (const player of unassigned) {
+      for (const slot in slotTargets) {
+        if (slotTargets[slot] <= 0) continue;
+
+        const score = getCompatibilityScore(
+          player,
+          slot,
+          formation,
+          adminSettings.mainPositionBonus,
+          adminSettings.alternatePositionBonus
+        );
+
+        if (!bestChoice || score > bestChoice.score) {
+          bestChoice = { player, slot, score };
+        }
+      }
+    }
+
+    if (!bestChoice) break;
+
+    assigned.push({
+      ...bestChoice.player,
+      assignedPosition: bestChoice.slot,
+    });
+
+    slotTargets[bestChoice.slot]--;
+
+    const index = unassigned.findIndex(
+      (p) => p.id === bestChoice.player.id
+    );
+    unassigned.splice(index, 1);
+  }
+
+  return assigned;
+}
+
+
+// --------------------------------
+// 7. ON MANUAL MOVE
+// --------------------------------
+
+// Whenever players change within a team:
+team.players = assignPositionsToTeam(
+  team.players,
+  team.formation,
+  adminSettings
+);
+
+
+// ===============================
+// END FIX PASS 9
+// ===============================
