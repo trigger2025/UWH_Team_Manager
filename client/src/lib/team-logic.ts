@@ -37,70 +37,61 @@ const EXTRA_SLOT_PRIORITY: Record<FormationType, string[]> = {
   "1-3-2": ["Back", "Wing", "Centre", "Forward"],
 };
 
-function canPlayRole(
-  player: PlayerWithAssignedFormationRole,
-  role: string,
-  formation: FormationType
-): boolean {
-  const pref = (player.formationPreferences as any)?.[formation];
-  const main = pref?.main as string | undefined;
-  const alts = (pref?.alternates as string[]) || [];
-  return main === role || alts.includes(role);
-}
-
-function pickForRole(
-  remaining: PlayerWithAssignedFormationRole[],
-  primaryRole: string,
-  formation: FormationType,
-  fallbackRole?: string
-): PlayerWithAssignedFormationRole | undefined {
-  const byRating = (list: PlayerWithAssignedFormationRole[]) =>
-    [...list].sort((a, b) => b.ratingUsed - a.ratingUsed);
-
-  const primary = byRating(remaining.filter(p => canPlayRole(p, primaryRole, formation)));
-  if (primary.length > 0) return primary[0];
-
-  if (fallbackRole) {
-    const fallback = byRating(remaining.filter(p => canPlayRole(p, fallbackRole, formation)));
-    if (fallback.length > 0) return fallback[0];
-  }
-
-  return byRating(remaining)[0];
-}
-
-function findCorePlayerIds(
+function fillCoreSlots(
   players: PlayerWithAssignedFormationRole[],
   formation: FormationType
-): Set<number> {
-  const remaining = [...players];
+): { coreIds: Set<number>; extras: PlayerWithAssignedFormationRole[] } {
+  const unassigned = [...players];
   const coreIds = new Set<number>();
 
-  function lock(player: PlayerWithAssignedFormationRole | undefined) {
-    if (!player) return;
-    coreIds.add(player.id);
-    const idx = remaining.findIndex(p => p.id === player.id);
-    if (idx !== -1) remaining.splice(idx, 1);
+  function getPrefs(player: PlayerWithAssignedFormationRole): string[] {
+    const pref = (player.formationPreferences as any)?.[formation];
+    const main = pref?.main as string | undefined;
+    const alts = (pref?.alternates as string[]) || [];
+    return [main, ...alts].filter(Boolean) as string[];
+  }
+
+  function pickForSlot(role: string, fallbackRoles: string[] = []): void {
+    let candidates = unassigned.filter(p => getPrefs(p).includes(role));
+
+    if (candidates.length === 0 && fallbackRoles.length > 0) {
+      for (const fb of fallbackRoles) {
+        candidates = unassigned.filter(p => getPrefs(p).includes(fb));
+        if (candidates.length > 0) break;
+      }
+    }
+
+    if (candidates.length === 0) candidates = [...unassigned];
+
+    candidates.sort((a, b) => b.ratingUsed - a.ratingUsed);
+
+    const chosen = candidates[0];
+    if (!chosen) return;
+
+    coreIds.add(chosen.id);
+    const idx = unassigned.findIndex(p => p.id === chosen.id);
+    if (idx !== -1) unassigned.splice(idx, 1);
   }
 
   if (formation === "3-3") {
-    lock(pickForRole(remaining, "Centre", formation, "Forward"));
-    lock(pickForRole(remaining, "Centre Back", formation, "Half Back"));
-    lock(pickForRole(remaining, "Half Back", formation));
-    lock(pickForRole(remaining, "Half Back", formation));
-    lock(pickForRole(remaining, "Forward", formation));
-    lock(pickForRole(remaining, "Forward", formation));
+    pickForSlot("Centre", ["Forward"]);
+    pickForSlot("Centre Back", ["Half Back"]);
+    pickForSlot("Half Back");
+    pickForSlot("Half Back");
+    pickForSlot("Forward");
+    pickForSlot("Forward");
   }
 
   if (formation === "1-3-2") {
-    lock(pickForRole(remaining, "Back", formation));
-    lock(pickForRole(remaining, "Back", formation));
-    lock(pickForRole(remaining, "Centre", formation));
-    lock(pickForRole(remaining, "Wing", formation));
-    lock(pickForRole(remaining, "Wing", formation));
-    lock(pickForRole(remaining, "Forward", formation));
+    pickForSlot("Back");
+    pickForSlot("Back");
+    pickForSlot("Centre");
+    pickForSlot("Wing");
+    pickForSlot("Wing");
+    pickForSlot("Forward");
   }
 
-  return coreIds;
+  return { coreIds, extras: unassigned };
 }
 
 function deriveClusterLabel(
@@ -134,8 +125,7 @@ export function applyClusterLabels(
   const size = players.length;
   if (size <= 6) return players.map(p => ({ ...p, clusterLabel: undefined }));
 
-  const coreIds = findCorePlayerIds(players, formation);
-  const extras = players.filter(p => !coreIds.has(p.id));
+  const { coreIds, extras } = fillCoreSlots(players, formation);
 
   if (extras.length === 0) return players.map(p => ({ ...p, clusterLabel: undefined }));
 

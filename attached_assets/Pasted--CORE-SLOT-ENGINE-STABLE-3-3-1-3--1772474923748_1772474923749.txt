@@ -1,0 +1,90 @@
+/* =========================================================
+   CORE SLOT ENGINE — STABLE 3-3 + 1-3-2
+   Replaces existing core assignment logic completely
+   ========================================================= */
+
+function fillCoreSlots(players, formation) {
+  const assigned = []
+  const unassigned = [...players]
+
+  function getPrefs(player) {
+    return [player.mainPosition, ...(player.alternates || [])]
+  }
+
+  function pickForSlot(role, fallbackRoles = []) {
+    let candidates = []
+
+    // 1️⃣ Exact capability
+    candidates = unassigned.filter(p =>
+      getPrefs(p).includes(role)
+    )
+
+    // 2️⃣ Fallback roles (in order)
+    if (candidates.length === 0 && fallbackRoles.length > 0) {
+      for (const fb of fallbackRoles) {
+        candidates = unassigned.filter(p =>
+          getPrefs(p).includes(fb)
+        )
+        if (candidates.length > 0) break
+      }
+    }
+
+    // 3️⃣ Absolute fallback — highest rated overall
+    if (candidates.length === 0) {
+      candidates = [...unassigned]
+    }
+
+    // Sort by rating descending
+    candidates.sort((a, b) => b.rating - a.rating)
+
+    const chosen = candidates[0]
+
+    assigned.push({
+      ...chosen,
+      assignedPosition: role,
+      clusterLabel: undefined // core players have no cluster
+    })
+
+    // Remove from pool
+    const index = unassigned.findIndex(p => p.id === chosen.id)
+    if (index !== -1) {
+      unassigned.splice(index, 1)
+    }
+  }
+
+  /* ======================================================
+     3-3 FORMATION
+     Must always result in:
+     2F, 1C, 2HB, 1CB
+     ====================================================== */
+  if (formation === "3-3") {
+
+    // Lock order (non-negotiable)
+    pickForSlot("Centre", ["Forward"])
+    pickForSlot("Centre Back", ["Half Back"])
+    pickForSlot("Half Back")
+    pickForSlot("Half Back")
+    pickForSlot("Forward")
+    pickForSlot("Forward")
+  }
+
+  /* ======================================================
+     1-3-2 FORMATION
+     Must always result in:
+     2B, 1C, 2W, 1F
+     ====================================================== */
+  if (formation === "1-3-2") {
+
+    pickForSlot("Back")
+    pickForSlot("Back")
+    pickForSlot("Centre")
+    pickForSlot("Wing")
+    pickForSlot("Wing")
+    pickForSlot("Forward")
+  }
+
+  return {
+    corePlayers: assigned,
+    extras: unassigned
+  }
+}
