@@ -48,43 +48,56 @@ function canPlayRole(
   return main === role || alts.includes(role);
 }
 
+function pickForRole(
+  remaining: PlayerWithAssignedFormationRole[],
+  primaryRole: string,
+  formation: FormationType,
+  fallbackRole?: string
+): PlayerWithAssignedFormationRole | undefined {
+  const byRating = (list: PlayerWithAssignedFormationRole[]) =>
+    [...list].sort((a, b) => b.ratingUsed - a.ratingUsed);
+
+  const primary = byRating(remaining.filter(p => canPlayRole(p, primaryRole, formation)));
+  if (primary.length > 0) return primary[0];
+
+  if (fallbackRole) {
+    const fallback = byRating(remaining.filter(p => canPlayRole(p, fallbackRole, formation)));
+    if (fallback.length > 0) return fallback[0];
+  }
+
+  return byRating(remaining)[0];
+}
+
 function findCorePlayerIds(
   players: PlayerWithAssignedFormationRole[],
   formation: FormationType
 ): Set<number> {
-  const required = { ...BASE_SLOT_STRUCTURES[formation] };
   const remaining = [...players];
   const coreIds = new Set<number>();
 
-  const roleScarcity = Object.entries(required)
-    .flatMap(([role, count]) => Array.from({ length: count }, () => role))
-    .reduce<{ role: string; capableCount: number }[]>((acc, role) => {
-      const existing = acc.find(r => r.role === role);
-      if (!existing) {
-        acc.push({ role, capableCount: remaining.filter(p => canPlayRole(p, role, formation)).length });
-      }
-      return acc;
-    }, [])
-    .sort((a, b) => a.capableCount - b.capableCount);
+  function lock(player: PlayerWithAssignedFormationRole | undefined) {
+    if (!player) return;
+    coreIds.add(player.id);
+    const idx = remaining.findIndex(p => p.id === player.id);
+    if (idx !== -1) remaining.splice(idx, 1);
+  }
 
-  for (const { role } of roleScarcity) {
-    let slotsNeeded = required[role as keyof typeof required];
+  if (formation === "3-3") {
+    lock(pickForRole(remaining, "Centre", formation, "Forward"));
+    lock(pickForRole(remaining, "Centre Back", formation, "Half Back"));
+    lock(pickForRole(remaining, "Half Back", formation));
+    lock(pickForRole(remaining, "Half Back", formation));
+    lock(pickForRole(remaining, "Forward", formation));
+    lock(pickForRole(remaining, "Forward", formation));
+  }
 
-    while (slotsNeeded > 0) {
-      const eligible = remaining
-        .filter(p => canPlayRole(p, role, formation))
-        .sort((a, b) => b.ratingUsed - a.ratingUsed);
-
-      const chosen = eligible.length > 0
-        ? eligible[0]
-        : [...remaining].sort((a, b) => b.ratingUsed - a.ratingUsed)[0];
-
-      if (!chosen) break;
-
-      coreIds.add(chosen.id);
-      remaining.splice(remaining.indexOf(chosen), 1);
-      slotsNeeded--;
-    }
+  if (formation === "1-3-2") {
+    lock(pickForRole(remaining, "Back", formation));
+    lock(pickForRole(remaining, "Back", formation));
+    lock(pickForRole(remaining, "Centre", formation));
+    lock(pickForRole(remaining, "Wing", formation));
+    lock(pickForRole(remaining, "Wing", formation));
+    lock(pickForRole(remaining, "Forward", formation));
   }
 
   return coreIds;
