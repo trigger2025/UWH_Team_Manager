@@ -69,21 +69,6 @@ Preferred communication style: Simple, everyday language.
 - **Manual Move Reassignment**: When players are moved between teams or pools, all positions on affected teams are fully reassigned using the intelligent engine
 - **Base Slot Structures**: 3-3: Forward(2), Centre(1), Half Back(2), Centre Back(1); 1-3-2: Forward(1), Wing(2), Centre(1), Back(2)
 
-## Advanced Cluster Engine
-- **Toggle**: `advanced_cluster_engine` admin setting (default false), toggle in Settings page under Position Assignment card
-- **When OFF**: Uses standard intelligent position engine (assignFormationRoles)
-- **When ON**: Uses dynamic cluster engine (assignWithClusterEngine) from `client/src/lib/cluster-engine.ts`
-- **Core Assignment**: First fills base formation slots (6 positions) using compatibility scoring
-- **Cluster Building**: Extra players beyond core are grouped into 2-3 player clusters scored by position compatibility
-- **Cluster Labels**: Displayed as "Forward/Centre (3-for-2)", "Super-Sub" for single extras
-- **Avoidance Penalties**: Heavy penalty (-1000) for bad pairings: Forward+Half Back, Forward+Centre Back (3-3); Forward+Back (1-3-2)
-- **Soft Misfit**: -15 penalty per weak compatibility assignment within clusters
-- **Fallback Logic**: 3-3: highest Forward→Centre, highest Half Back→Centre Back if missing; 1-3-2: ensures sufficient Backs
-- **Team Symmetry**: After clustering both teams, prevents extreme defensive imbalance via lowest-impact cluster swap
-- **Manual Moves**: Full recalculation (core + clusters) on player moves between teams/pools
-- **assignedPosition type**: Widened to `string` to support cluster labels alongside standard position names
-- **Snapshot Integration**: Cluster labels stored in PlayerRatingSnapshot.position field (already `string` type)
-
 ## Visibility Settings
 - **Settings Storage**: Stored in context as `visibilitySettings: { showRatings: boolean, showPositions: boolean }`
 - **Default Values**: Both `showRatings` and `showPositions` default to `true`
