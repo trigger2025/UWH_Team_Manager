@@ -1,0 +1,255 @@
+FIX PASS 10 – ADVANCED DYNAMIC CLUSTER ENGINE (TOGGLE CONTROLLED)
+
+OBJECTIVE:
+Replace static sub labelling with a dynamic compatibility-driven cluster engine.
+Must:
+• Work for 3-3 and 1-3-2
+• Work for 4–12 players per team
+• Handle odd numbers
+• Avoid structurally bad clusters
+• Respect heavy penalties
+• Be toggle controlled in Settings
+
+---------------------------------------------------
+1️⃣ SETTINGS TOGGLE
+---------------------------------------------------
+
+Add to Admin/Settings state:
+
+advancedClusterEngine: boolean (default false)
+
+UI:
+Toggle labelled:
+"Advanced Cluster Engine (Experimental)"
+
+When OFF:
+→ Use existing simple position assignment
+When ON:
+→ Use dynamic cluster engine below
+
+---------------------------------------------------
+2️⃣ CLUSTER AVOIDANCE PENALTIES
+---------------------------------------------------
+
+When formation = "3-3":
+Heavy penalty if cluster contains:
+- Forward + Half Back
+- Forward + Centre Back
+
+When formation = "1-3-2":
+Heavy penalty if cluster contains:
+- Forward + Back
+
+Additionally:
+4-3 clusters in 1-3-2 containing Forward + Back
+→ apply heavy penalty
+
+Heavy penalty value:
+-1000 cluster score
+
+Soft misfit penalty:
+-15 per weak compatibility assignment
+
+---------------------------------------------------
+3️⃣ CORE POSITION ASSIGNMENT (STEP 1)
+---------------------------------------------------
+
+For each team independently:
+
+Step A:
+Score every player for every core position:
+
+score =
+  baseCompatibility
++ preferredBonus (slider)
++ alternateBonus (slider)
++ (rating / 100)  // light tie-break
+
+Assign players to maximize total score
+(one player per core slot)
+
+Formation core slots:
+
+3-3:
+Forward x2
+Centre x1
+Half Back x2
+Centre Back x1
+
+1-3-2:
+Forward x1
+Wing x2
+Centre x1
+Back x2
+
+If not enough players for full core:
+Fill highest scoring available
+Never crash
+Continue
+
+---------------------------------------------------
+4️⃣ 3-3 FALLBACK LOGIC
+---------------------------------------------------
+
+If no natural Centre:
+→ highest rated Forward becomes Centre
+
+If no natural Centre Back:
+→ highest rated Half Back becomes Centre Back
+
+If neither exists:
+→ highest rated player → CB
+→ next highest → C
+
+---------------------------------------------------
+5️⃣ 1-3-2 FALLBACK LOGIC
+---------------------------------------------------
+
+If insufficient Back players:
+
+Sort by rating descending:
+Highest → Back
+Next → Centre
+Next → Back
+
+---------------------------------------------------
+6️⃣ CLUSTER BUILDING (STEP 2)
+---------------------------------------------------
+
+Remaining players after core assignment
+= "extras"
+
+If extras.length === 0
+→ Done
+
+If extras.length === 1:
+Label as:
+3-3 → "Super-Sub"
+1-3-2 → "Super-Sub"
+
+If extras.length >= 2:
+Build clusters dynamically:
+
+Algorithm:
+1. Generate all possible cluster groupings (2 or 3 size)
+2. Score each grouping:
+
+clusterScore =
+  sum(position compatibility inside cluster)
+- avoidance penalties
+- misfit penalties
+
+3. Pick highest scoring cluster
+4. Remove clustered players
+5. Repeat until no players remain
+
+Cluster size rules:
+
+7 players total:
+→ 1 Super-Sub
+
+8 players:
+3-3 → enforce:
+  Front-line cluster (Forward/Centre)
+  Back-line cluster (HB/CB)
+
+1-3-2 → build 4-for-3 clusters
+
+9 players:
+3-3 → prefer three 3-for-2 clusters
+  Forwards cluster
+  Middle cluster (C/CB)
+  HB cluster
+
+1-3-2 → 3-for-2 Back cluster first
+
+10 players:
+Flexible:
+Maximize compatibility score
+Avoid forbidden pairings
+
+11–12 players:
+Continue clustering by score
+
+---------------------------------------------------
+7️⃣ CLUSTER LABEL FORMAT
+---------------------------------------------------
+
+Display clusters as:
+
+"Forward/Centre (3-2)"
+"Wing/Centre (3-2)"
+"Half Back/Centre Back (3-2)"
+"Super-Sub"
+
+Use full words.
+Do NOT abbreviate to F/C etc.
+
+Core players keep single position label:
+"Forward"
+"Centre Back"
+etc.
+
+---------------------------------------------------
+8️⃣ TEAM SYMMETRY ENFORCEMENT
+---------------------------------------------------
+
+After cluster building for BOTH teams:
+
+Compare structural distribution.
+
+If one team has:
+All defensive clusters
+And other has none
+
+Apply balancing swap:
+Swap lowest impact cluster between teams.
+
+Do NOT force identical structure.
+Only prevent extreme imbalance.
+
+---------------------------------------------------
+9️⃣ MANUAL MOVE BEHAVIOUR
+---------------------------------------------------
+
+When a player is manually moved:
+
+If advancedClusterEngine ON:
+→ Recalculate entire team:
+  Core assignment
+  Cluster building
+
+Never default to Forward.
+Never leave invalid position.
+
+---------------------------------------------------
+🔟 SNAPSHOT INTEGRATION
+---------------------------------------------------
+
+When saving match results:
+
+Store for each player:
+- Assigned core position OR cluster label
+- Formation used
+- Rating before
+- Rating after
+- Whether offhand used
+
+Deleting result must:
+Restore ratingBefore
+Then reapply later matches in chronological order
+(as already implemented)
+
+---------------------------------------------------
+EXPECTED RESULT
+---------------------------------------------------
+
+• Works for 4–12 players
+• Works for odd numbers
+• Avoids F/HB, F/CB (3-3)
+• Avoids F/B (1-3-2)
+• Uses compatibility intelligently
+• Heavy penalties prevent unrealistic clusters
+• Toggle allows fallback to simple system
+
+END FIX PASS 10

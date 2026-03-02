@@ -20,7 +20,8 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  Crosshair
+  Crosshair,
+  FlaskConical
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -46,6 +47,8 @@ export default function SettingsPage() {
   const currentMainPosBonus = mainPosSetting ? parseInt(mainPosSetting.value as string) : 4;
   const altPosSetting = adminSettings.find(s => s.key === "alternate_position_bonus");
   const currentAltPosBonus = altPosSetting ? parseInt(altPosSetting.value as string) : 2;
+  const clusterSetting = adminSettings.find(s => s.key === "advanced_cluster_engine");
+  const clusterEnabled = clusterSetting ? (clusterSetting.value === "true" || clusterSetting.value === true) : false;
 
   useEffect(() => {
     setKFactorInput(currentKFactor.toString());
@@ -194,6 +197,22 @@ export default function SettingsPage() {
             <p className="text-[10px] text-muted-foreground leading-relaxed">
               Higher values give stronger preference to players' main and alternate positions during team generation. Range: 0 (ignore preferences) to 10.
             </p>
+            <div className="pt-4 border-t border-border/30 mt-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <FlaskConical className="h-3.5 w-3.5 text-amber-500" />
+                    <Label className="text-sm font-medium">Advanced Cluster Engine</Label>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Groups extra players into positional clusters instead of assigning individual positions</p>
+                </div>
+                <Switch
+                  checked={clusterEnabled}
+                  onCheckedChange={(checked) => updateAdminSetting("advanced_cluster_engine", checked ? "true" : "false")}
+                  data-testid="switch-cluster-engine"
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
 

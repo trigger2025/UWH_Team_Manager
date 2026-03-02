@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, FORMATION_ROLES, createMatchTeamSnapshot } from "@/lib/team-logic";
+import { isAdvancedClusterEnabled, assignWithClusterEngine } from "@/lib/cluster-engine";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +25,7 @@ import {
   Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player } from "@shared/schema";
+import { GeneratedTeam, FormationType, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player } from "@shared/schema";
 import { useLocation } from "wouter";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
@@ -270,12 +271,10 @@ export default function GeneratePage() {
     for (const p of [...newSource.black.players, ...newSource.white.players]) {
       if (p.usedOffHand) sourceOffHandMap[p.id] = true;
     }
-    const sourceReassigned = assignFormationRoles(
-      newSource[sourceTeamKey].players.map(p => p as Player),
-      newSource[sourceTeamKey].formation,
-      sourceOffHandMap,
-      adminSettings
-    );
+    const sourceBasePlayers = newSource[sourceTeamKey].players.map(p => p as Player);
+    const sourceReassigned = isAdvancedClusterEnabled(adminSettings)
+      ? assignWithClusterEngine(sourceBasePlayers, newSource[sourceTeamKey].formation, sourceOffHandMap, adminSettings)
+      : assignFormationRoles(sourceBasePlayers, newSource[sourceTeamKey].formation, sourceOffHandMap, adminSettings);
     newSource[sourceTeamKey].players = sourceReassigned;
     newSource[sourceTeamKey].totalRating = sourceReassigned.reduce((s, p) => s + p.ratingUsed, 0);
     
@@ -296,12 +295,10 @@ export default function GeneratePage() {
     for (const p of [...newTarget.black.players, ...newTarget.white.players]) {
       if (p.usedOffHand) offHandMap[p.id] = true;
     }
-    const reassigned = assignFormationRoles(
-      newTarget[targetTeamKey].players.map(p => p as Player),
-      newTarget[targetTeamKey].formation,
-      offHandMap,
-      adminSettings
-    );
+    const targetBasePlayers = newTarget[targetTeamKey].players.map(p => p as Player);
+    const reassigned = isAdvancedClusterEnabled(adminSettings)
+      ? assignWithClusterEngine(targetBasePlayers, newTarget[targetTeamKey].formation, offHandMap, adminSettings)
+      : assignFormationRoles(targetBasePlayers, newTarget[targetTeamKey].formation, offHandMap, adminSettings);
     newTarget[targetTeamKey].players = reassigned;
     newTarget[targetTeamKey].totalRating = reassigned.reduce((s, p) => s + p.ratingUsed, 0);
     
@@ -347,7 +344,7 @@ export default function GeneratePage() {
 
   // Get unique positions for display (using black team formation as default)
   const getUniquePositions = (formation: FormationType) => 
-    FORMATION_ROLES[formation].filter((v: FormationPosition, i: number, a: FormationPosition[]) => a.indexOf(v) === i);
+    FORMATION_ROLES[formation].filter((v: string, i: number, a: string[]) => a.indexOf(v) === i);
   
   // Calculate if generation is possible
   const canGenerateStandard = selectedPlayerIds.length >= 2;

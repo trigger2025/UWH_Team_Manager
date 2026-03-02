@@ -101,9 +101,8 @@ export const adminSettings = pgTable("admin_settings", {
 
 // Player with assigned formation role during team generation
 export interface PlayerWithAssignedFormationRole extends Player {
-  assignedPosition: FormationPosition;
+  assignedPosition: string;
   formationRole: "main" | "alternate" | "filler";
-  // Rating snapshot at generation time
   ratingUsed: number;
   usedOffHand: boolean;
 }

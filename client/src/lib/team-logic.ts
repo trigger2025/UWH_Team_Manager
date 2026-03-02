@@ -1,6 +1,7 @@
-import { Player, FormationType, FormationPosition, GeneratedTeam, PlayerWithAssignedFormationRole, MatchTeamSnapshot, PlayerRatingSnapshot, PlayerOffHandSelection, AdminSettings } from "@shared/schema";
+import { Player, FormationType, GeneratedTeam, PlayerWithAssignedFormationRole, MatchTeamSnapshot, PlayerRatingSnapshot, PlayerOffHandSelection, AdminSettings } from "@shared/schema";
+import { isAdvancedClusterEnabled, assignWithClusterEngine, assignTeamsWithClusterEngine } from "./cluster-engine";
 
-export const FORMATION_ROLES: Record<FormationType, FormationPosition[]> = {
+export const FORMATION_ROLES: Record<FormationType, string[]> = {
   "3-3": [
     "Forward", "Forward", "Forward",
     "Half Back", "Centre Back", "Half Back"
@@ -253,8 +254,21 @@ export function generateTeams(
     } else break;
   }
 
-  const blackAssigned = assignFormationRoles(blackPlayers, teamFormationMap.black, playerOffHandSelections, adminSettings);
-  const whiteAssigned = assignFormationRoles(whitePlayers, teamFormationMap.white, playerOffHandSelections, adminSettings);
+  let blackAssigned: PlayerWithAssignedFormationRole[];
+  let whiteAssigned: PlayerWithAssignedFormationRole[];
+
+  if (isAdvancedClusterEnabled(adminSettings)) {
+    const result = assignTeamsWithClusterEngine(
+      blackPlayers, whitePlayers,
+      teamFormationMap.black, teamFormationMap.white,
+      playerOffHandSelections, adminSettings
+    );
+    blackAssigned = result.black;
+    whiteAssigned = result.white;
+  } else {
+    blackAssigned = assignFormationRoles(blackPlayers, teamFormationMap.black, playerOffHandSelections, adminSettings);
+    whiteAssigned = assignFormationRoles(whitePlayers, teamFormationMap.white, playerOffHandSelections, adminSettings);
+  }
 
   return {
     black: {
@@ -323,9 +337,17 @@ export function movePlayerBetweenTeams(
   
   const sourceBasePlayers = newTeams[sourceKey].players.map(p => p as Player);
   const targetBasePlayers = newTeams[targetKey].players.map(p => p as Player);
-  
-  const sourceReassigned = assignFormationRoles(sourceBasePlayers, newTeams[sourceKey].formation, offHandMap, adminSettings);
-  const targetReassigned = assignFormationRoles(targetBasePlayers, newTeams[targetKey].formation, offHandMap, adminSettings);
+
+  let sourceReassigned: PlayerWithAssignedFormationRole[];
+  let targetReassigned: PlayerWithAssignedFormationRole[];
+
+  if (isAdvancedClusterEnabled(adminSettings)) {
+    sourceReassigned = assignWithClusterEngine(sourceBasePlayers, newTeams[sourceKey].formation, offHandMap, adminSettings);
+    targetReassigned = assignWithClusterEngine(targetBasePlayers, newTeams[targetKey].formation, offHandMap, adminSettings);
+  } else {
+    sourceReassigned = assignFormationRoles(sourceBasePlayers, newTeams[sourceKey].formation, offHandMap, adminSettings);
+    targetReassigned = assignFormationRoles(targetBasePlayers, newTeams[targetKey].formation, offHandMap, adminSettings);
+  }
   
   newTeams[sourceKey].players = sourceReassigned;
   newTeams[targetKey].players = targetReassigned;
