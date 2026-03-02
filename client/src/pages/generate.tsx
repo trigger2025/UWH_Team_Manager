@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
-import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, applyClusterLabels, FORMATION_ROLES, createMatchTeamSnapshot } from "@/lib/team-logic";
+import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, applyClusterLabels, FORMATION_ROLES, createMatchTeamSnapshot, formatDisplayRole } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1119,11 +1119,11 @@ function PlayerRow({ player, index, isLast, onMove, onSwapPool, poolLabel, showR
               }`}
               title={player.clusterLabel}
             >
-              {player.clusterLabel}
+              {formatDisplayRole(player.clusterLabel, player.assignedPosition)}
             </Badge>
           ) : (
             <Badge variant="secondary" className="text-[9px] font-bold uppercase tracking-tight">
-              {player.assignedPosition}
+              {formatDisplayRole(undefined, player.assignedPosition)}
             </Badge>
           )
         )}

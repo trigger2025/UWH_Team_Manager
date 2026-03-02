@@ -526,3 +526,44 @@ export function createMatchTeamSnapshot(
     timestamp: new Date().toISOString()
   };
 }
+
+export function getPositionCode(position: string): string {
+  switch (position) {
+    case "Forward":     return "F";
+    case "Centre":      return "C";
+    case "Half Back":   return "HB";
+    case "Centre Back": return "CB";
+    case "Wing":        return "W";
+    case "Back":        return "B";
+    default:            return position;
+  }
+}
+
+export function formatDisplayRole(
+  clusterLabel: string | undefined,
+  assignedPosition: string
+): string {
+  if (!clusterLabel) return getPositionCode(assignedPosition);
+
+  if (clusterLabel === "super-sub") return "Super-sub";
+
+  if (clusterLabel.endsWith(" 1-1")) {
+    const role = clusterLabel.slice(0, -4);
+    return `${getPositionCode(role)} (1-1)`;
+  }
+
+  if (clusterLabel.includes("/")) {
+    const stripped = clusterLabel.replace(/ \d+-\d+$/, "");
+    return stripped.split("/").map(p => getPositionCode(p.trim())).join("/");
+  }
+
+  if (clusterLabel.endsWith(" 3-2") || clusterLabel.endsWith(" 4-3")) {
+    const role = clusterLabel.replace(/ \d+-\d+$/, "");
+    return getPositionCode(role);
+  }
+
+  if (clusterLabel === "Flexible") return "Flex";
+
+  const code = getPositionCode(clusterLabel);
+  return code;
+}
