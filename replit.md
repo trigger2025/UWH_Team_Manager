@@ -79,8 +79,11 @@ Preferred communication style: Simple, everyday language.
 - **Assignment Order**: Players sorted by ratingUsed descending; cluster labels assigned from highest-rated first within each cluster group
 - **Applied**: On generation and on every manual move (between teams or pools)
 
-## Core Lock Engine (Cluster Assignment — Pass 12)
-- **Core 6 locked first**: `findCorePlayerIds` uses greedy preference-matching (main=100, alternate=40, no match=-1000) to assign the 6 base formation slots to the best-matched players
+## Core Lock Engine (Cluster Assignment — Pass 12 + Pass 13)
+- **Core 6 locked first**: `findCorePlayerIds` uses scarcity-aware greedy assignment to fill the 6 base formation slots
+- **Scarcity order (Pass 13)**: Roles filled in order from most scarce (fewest capable players) to least scarce — prevents versatile players from stealing specialist positions
+- **Scarcity calculation**: For each formation role, count how many players have it as main or alternate; fill rarest roles first
+- **Role assignment**: Highest-rated capable player fills each slot; fallback to highest-rated remaining if no capable player
 - **Extras get cluster labels**: Players beyond the core 6 are identified as "extras" and get `clusterLabel` instead of showing regular positions
 - **Super-sub (1 extra)**: When exactly 1 extra player exists (7-player team), they are labeled "super-sub" (amber badge)
 - **Multiple extras**: `deriveClusterLabel` assigns labels based on player formation preferences:

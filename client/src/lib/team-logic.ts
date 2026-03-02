@@ -37,33 +37,53 @@ const EXTRA_SLOT_PRIORITY: Record<FormationType, string[]> = {
   "1-3-2": ["Back", "Wing", "Centre", "Forward"],
 };
 
+function canPlayRole(
+  player: PlayerWithAssignedFormationRole,
+  role: string,
+  formation: FormationType
+): boolean {
+  const pref = (player.formationPreferences as any)?.[formation];
+  const main = pref?.main as string | undefined;
+  const alts = (pref?.alternates as string[]) || [];
+  return main === role || alts.includes(role);
+}
+
 function findCorePlayerIds(
   players: PlayerWithAssignedFormationRole[],
   formation: FormationType
 ): Set<number> {
-  const coreSlots: string[] = [];
-  for (const [pos, count] of Object.entries(BASE_SLOT_STRUCTURES[formation])) {
-    for (let i = 0; i < count; i++) coreSlots.push(pos);
-  }
-
+  const required = { ...BASE_SLOT_STRUCTURES[formation] };
   const remaining = [...players];
   const coreIds = new Set<number>();
 
-  for (const slot of coreSlots) {
-    let bestIdx = -1;
-    let bestScore = -Infinity;
+  const roleScarcity = Object.entries(required)
+    .flatMap(([role, count]) => Array.from({ length: count }, () => role))
+    .reduce<{ role: string; capableCount: number }[]>((acc, role) => {
+      const existing = acc.find(r => r.role === role);
+      if (!existing) {
+        acc.push({ role, capableCount: remaining.filter(p => canPlayRole(p, role, formation)).length });
+      }
+      return acc;
+    }, [])
+    .sort((a, b) => a.capableCount - b.capableCount);
 
-    for (let i = 0; i < remaining.length; i++) {
-      const pref = (remaining[i].formationPreferences as any)?.[formation];
-      const main = pref?.main as string | undefined;
-      const alts = (pref?.alternates as string[]) || [];
-      const score = main === slot ? 100 : alts.includes(slot) ? 40 : -1000;
-      if (score > bestScore) { bestScore = score; bestIdx = i; }
-    }
+  for (const { role } of roleScarcity) {
+    let slotsNeeded = required[role as keyof typeof required];
 
-    if (bestIdx !== -1) {
-      coreIds.add(remaining[bestIdx].id);
-      remaining.splice(bestIdx, 1);
+    while (slotsNeeded > 0) {
+      const eligible = remaining
+        .filter(p => canPlayRole(p, role, formation))
+        .sort((a, b) => b.ratingUsed - a.ratingUsed);
+
+      const chosen = eligible.length > 0
+        ? eligible[0]
+        : [...remaining].sort((a, b) => b.ratingUsed - a.ratingUsed)[0];
+
+      if (!chosen) break;
+
+      coreIds.add(chosen.id);
+      remaining.splice(remaining.indexOf(chosen), 1);
+      slotsNeeded--;
     }
   }
 
