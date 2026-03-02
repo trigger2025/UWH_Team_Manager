@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
-import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, FORMATION_ROLES, createMatchTeamSnapshot } from "@/lib/team-logic";
+import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, applyClusterLabels, FORMATION_ROLES, createMatchTeamSnapshot } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -270,11 +270,14 @@ export default function GeneratePage() {
     for (const p of [...newSource.black.players, ...newSource.white.players]) {
       if (p.usedOffHand) sourceOffHandMap[p.id] = true;
     }
-    const sourceReassigned = assignFormationRoles(
-      newSource[sourceTeamKey].players.map(p => p as Player),
-      newSource[sourceTeamKey].formation,
-      sourceOffHandMap,
-      adminSettings
+    const sourceReassigned = applyClusterLabels(
+      assignFormationRoles(
+        newSource[sourceTeamKey].players.map(p => p as Player),
+        newSource[sourceTeamKey].formation,
+        sourceOffHandMap,
+        adminSettings
+      ),
+      newSource[sourceTeamKey].formation
     );
     newSource[sourceTeamKey].players = sourceReassigned;
     newSource[sourceTeamKey].totalRating = sourceReassigned.reduce((s, p) => s + p.ratingUsed, 0);
@@ -296,11 +299,14 @@ export default function GeneratePage() {
     for (const p of [...newTarget.black.players, ...newTarget.white.players]) {
       if (p.usedOffHand) offHandMap[p.id] = true;
     }
-    const reassigned = assignFormationRoles(
-      newTarget[targetTeamKey].players.map(p => p as Player),
-      newTarget[targetTeamKey].formation,
-      offHandMap,
-      adminSettings
+    const reassigned = applyClusterLabels(
+      assignFormationRoles(
+        newTarget[targetTeamKey].players.map(p => p as Player),
+        newTarget[targetTeamKey].formation,
+        offHandMap,
+        adminSettings
+      ),
+      newTarget[targetTeamKey].formation
     );
     newTarget[targetTeamKey].players = reassigned;
     newTarget[targetTeamKey].totalRating = reassigned.reduce((s, p) => s + p.ratingUsed, 0);
@@ -1103,9 +1109,23 @@ function PlayerRow({ player, index, isLast, onMove, onSwapPool, poolLabel, showR
       </div>
       <div className="flex items-center gap-2">
         {showPositions && (
-          <Badge variant="secondary" className="text-[9px] font-bold uppercase tracking-tight">
-            {player.assignedPosition}
-          </Badge>
+          player.clusterLabel ? (
+            <Badge
+              variant="outline"
+              className={`text-[9px] font-bold tracking-tight max-w-[90px] truncate ${
+                player.clusterLabel === "super-sub"
+                  ? "border-amber-400/50 text-amber-400 bg-amber-400/10"
+                  : "border-teal-400/50 text-teal-400 bg-teal-400/10"
+              }`}
+              title={player.clusterLabel}
+            >
+              {player.clusterLabel}
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="text-[9px] font-bold uppercase tracking-tight">
+              {player.assignedPosition}
+            </Badge>
+          )
         )}
         {onSwapPool && poolLabel && (
           <Button

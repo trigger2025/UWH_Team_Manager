@@ -37,6 +37,62 @@ const EXTRA_SLOT_PRIORITY: Record<FormationType, string[]> = {
   "1-3-2": ["Back", "Wing", "Centre", "Forward"],
 };
 
+interface ClusterTemplate {
+  weight: number;
+  type?: string;
+  clusters?: { label: string; size: number }[];
+}
+
+const CLUSTER_TEMPLATES: Record<FormationType, Record<number, ClusterTemplate[]>> = {
+  "3-3": {
+    6: [{ weight: 100, type: "core_only" }],
+    7: [{ weight: 100, clusters: [{ label: "super-sub", size: 1 }] }],
+    8: [{ weight: 100, clusters: [{ label: "Forward", size: 3 }, { label: "Back Line", size: 3 }] }],
+    9: [{ weight: 100, clusters: [{ label: "Forward", size: 3 }, { label: "Half Back", size: 3 }, { label: "Centre/Centre Back", size: 3 }] }],
+    10: [
+      { weight: 100, clusters: [{ label: "Forward 1-1", size: 2 }, { label: "Half Back 3-2", size: 3 }, { label: "Centre/Centre Back 3-2", size: 3 }] },
+      { weight: 60, clusters: [{ label: "Forward 1-1", size: 2 }, { label: "Centre 1-1", size: 2 }, { label: "Back 4-3", size: 4 }] },
+    ],
+  },
+  "1-3-2": {
+    6: [{ weight: 100, type: "core_only" }],
+    8: [{ weight: 100, clusters: [{ label: "Wing/Forward/Centre 4-3", size: 4 }, { label: "Back/Wing 4-3", size: 4 }] }],
+    9: [{ weight: 100, clusters: [{ label: "Back 3-2", size: 3 }, { label: "Wing/Forward 3-2", size: 3 }, { label: "Wing/Centre 3-2", size: 3 }] }],
+    10: [{ weight: 100, clusters: [{ label: "Back 3-2", size: 3 }, { label: "Wing/Centre 3-2", size: 3 }, { label: "Forward 1-1", size: 2 }, { label: "Wing 1-1", size: 2 }] }],
+  },
+};
+
+export function applyClusterLabels(
+  players: PlayerWithAssignedFormationRole[],
+  formation: FormationType
+): PlayerWithAssignedFormationRole[] {
+  const size = players.length;
+  if (size <= 6) return players.map(p => ({ ...p, clusterLabel: undefined }));
+
+  const formationTemplates = CLUSTER_TEMPLATES[formation];
+  const templates = formationTemplates[size] ?? formationTemplates[Math.min(size, 10)];
+  if (!templates || !templates.length) return players;
+
+  const chosen = [...templates].sort((a, b) => b.weight - a.weight)[0];
+  if (!chosen || !chosen.clusters || chosen.type === "core_only") {
+    return players.map(p => ({ ...p, clusterLabel: undefined }));
+  }
+
+  const sorted = [...players].sort((a, b) => b.ratingUsed - a.ratingUsed);
+  const labelMap = new Map<number, string>();
+  let idx = 0;
+  for (const cluster of chosen.clusters) {
+    for (let i = 0; i < cluster.size; i++) {
+      if (sorted[idx]) {
+        labelMap.set(sorted[idx].id, cluster.label);
+        idx++;
+      }
+    }
+  }
+
+  return players.map(p => ({ ...p, clusterLabel: labelMap.get(p.id) }));
+}
+
 export function getPositionBonusSettings(adminSettings: AdminSettings[]): { mainPositionBonus: number; alternatePositionBonus: number } {
   const mainSetting = adminSettings.find(s => s.key === "main_position_bonus");
   const altSetting = adminSettings.find(s => s.key === "alternate_position_bonus");
@@ -253,8 +309,14 @@ export function generateTeams(
     } else break;
   }
 
-  const blackAssigned = assignFormationRoles(blackPlayers, teamFormationMap.black, playerOffHandSelections, adminSettings);
-  const whiteAssigned = assignFormationRoles(whitePlayers, teamFormationMap.white, playerOffHandSelections, adminSettings);
+  const blackAssigned = applyClusterLabels(
+    assignFormationRoles(blackPlayers, teamFormationMap.black, playerOffHandSelections, adminSettings),
+    teamFormationMap.black
+  );
+  const whiteAssigned = applyClusterLabels(
+    assignFormationRoles(whitePlayers, teamFormationMap.white, playerOffHandSelections, adminSettings),
+    teamFormationMap.white
+  );
 
   return {
     black: {
@@ -324,8 +386,14 @@ export function movePlayerBetweenTeams(
   const sourceBasePlayers = newTeams[sourceKey].players.map(p => p as Player);
   const targetBasePlayers = newTeams[targetKey].players.map(p => p as Player);
   
-  const sourceReassigned = assignFormationRoles(sourceBasePlayers, newTeams[sourceKey].formation, offHandMap, adminSettings);
-  const targetReassigned = assignFormationRoles(targetBasePlayers, newTeams[targetKey].formation, offHandMap, adminSettings);
+  const sourceReassigned = applyClusterLabels(
+    assignFormationRoles(sourceBasePlayers, newTeams[sourceKey].formation, offHandMap, adminSettings),
+    newTeams[sourceKey].formation
+  );
+  const targetReassigned = applyClusterLabels(
+    assignFormationRoles(targetBasePlayers, newTeams[targetKey].formation, offHandMap, adminSettings),
+    newTeams[targetKey].formation
+  );
   
   newTeams[sourceKey].players = sourceReassigned;
   newTeams[targetKey].players = targetReassigned;

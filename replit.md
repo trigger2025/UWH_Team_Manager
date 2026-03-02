@@ -69,6 +69,16 @@ Preferred communication style: Simple, everyday language.
 - **Manual Move Reassignment**: When players are moved between teams or pools, all positions on affected teams are fully reassigned using the intelligent engine
 - **Base Slot Structures**: 3-3: Forward(2), Centre(1), Half Back(2), Centre Back(1); 1-3-2: Forward(1), Wing(2), Centre(1), Back(2)
 
+## Cluster Label System (Deterministic Smart Template)
+- **Purpose**: For teams with more than 6 players, players are grouped into named rotation clusters displayed instead of individual position names
+- **Cluster Label Field**: `clusterLabel?: string` on `PlayerWithAssignedFormationRole`; undefined for 6-player teams (show regular positions)
+- **Display**: Cluster labels shown as teal badge in PlayerRow; "super-sub" shown in amber; regular positions shown for unlabeled players
+- **Templates**: Deterministic — highest-weight template wins. Defined per formation and team size:
+  - 3-3/7: 1×"super-sub"; 3-3/8: 3×"Forward" + 3×"Back Line"; 3-3/9: 3×"Forward" + 3×"Half Back" + 3×"Centre/Centre Back"; 3-3/10: 2×"Forward 1-1" + 3×"Half Back 3-2" + 3×"Centre/Centre Back 3-2"
+  - 1-3-2/8: 4×"Wing/Forward/Centre 4-3" + 4×"Back/Wing 4-3"; 1-3-2/9: 3×"Back 3-2" + 3×"Wing/Forward 3-2" + 3×"Wing/Centre 3-2"; 1-3-2/10: 3×"Back 3-2" + 3×"Wing/Centre 3-2" + 2×"Forward 1-1" + 2×"Wing 1-1"
+- **Assignment Order**: Players sorted by ratingUsed descending; cluster labels assigned from highest-rated first within each cluster group
+- **Applied**: On generation and on every manual move (between teams or pools)
+
 ## Visibility Settings
 - **Settings Storage**: Stored in context as `visibilitySettings: { showRatings: boolean, showPositions: boolean }`
 - **Default Values**: Both `showRatings` and `showPositions` default to `true`

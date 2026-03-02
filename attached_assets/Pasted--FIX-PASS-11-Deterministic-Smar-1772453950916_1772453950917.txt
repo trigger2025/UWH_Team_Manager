@@ -1,0 +1,264 @@
+/* ============================================================
+   FIX PASS 11
+   Deterministic Smart Template Cluster Engine
+   Replaces freeform advanced clustering from Pass 10
+============================================================ */
+
+/* =========================
+   SETTINGS
+========================= */
+
+const CLUSTER_SETTINGS = {
+  enableAdvancedClusters: true,
+
+  // Position bonus weights (from Pass 9 sliders)
+  preferredBonus: window.PREFERRED_POSITION_BONUS || 4,
+  alternateBonus: window.ALTERNATE_POSITION_BONUS || 2,
+
+  // Heavy penalties
+  heavyPenalty: -100,
+  mediumPenalty: -40
+};
+
+/* =========================
+   UTILITIES
+========================= */
+
+function getPositionScore(player, position) {
+  let score = player.rating || 0;
+
+  if (player.preferredPositions?.includes(position)) {
+    score += CLUSTER_SETTINGS.preferredBonus;
+  } else if (player.alternatePositions?.includes(position)) {
+    score += CLUSTER_SETTINGS.alternateBonus;
+  }
+
+  return score;
+}
+
+function sortByRatingDesc(players) {
+  return [...players].sort((a, b) => (b.rating || 0) - (a.rating || 0));
+}
+
+/* =========================
+   HARD FALLBACKS
+========================= */
+
+// 3-3 fallback for missing C/CB
+function applyFallback_33(players) {
+  const hasC = players.some(p =>
+    p.preferredPositions?.includes("C") ||
+    p.alternatePositions?.includes("C")
+  );
+
+  const hasCB = players.some(p =>
+    p.preferredPositions?.includes("CB") ||
+    p.alternatePositions?.includes("CB")
+  );
+
+  const sorted = sortByRatingDesc(players);
+
+  if (!hasC && sorted.length > 0) {
+    sorted[0].forcedPosition = "C";
+  }
+
+  if (!hasCB && sorted.length > 1) {
+    sorted[1].forcedPosition = "CB";
+  }
+}
+
+// 1-3-2 fallback for missing backs/centre
+function applyFallback_132(players) {
+  const sorted = sortByRatingDesc(players);
+
+  if (sorted.length >= 3) {
+    sorted[0].forcedPosition = "B";
+    sorted[1].forcedPosition = "C";
+    sorted[2].forcedPosition = "B";
+  }
+}
+
+/* =========================
+   TEMPLATE DEFINITIONS
+========================= */
+
+function getTemplates_33(size) {
+  const templates = [];
+
+  if (size === 6) {
+    templates.push({ weight: 100, type: "core_only" });
+  }
+
+  if (size === 7) {
+    templates.push({
+      weight: 100,
+      clusters: [
+        { label: "super-sub", size: 1 }
+      ]
+    });
+  }
+
+  if (size === 8) {
+    // Front + Back line sub (PRIMARY)
+    templates.push({
+      weight: 100,
+      clusters: [
+        { label: "Forward", size: 3 },   // 3-2 front
+        { label: "Back Line", size: 3 }  // 3-2 back
+      ]
+    });
+  }
+
+  if (size === 9) {
+    templates.push({
+      weight: 100,
+      clusters: [
+        { label: "Forward", size: 3 },
+        { label: "Half Back", size: 3 },
+        { label: "Centre/Centre Back", size: 3 }
+      ]
+    });
+  }
+
+  if (size === 10) {
+    templates.push({
+      weight: 100,
+      clusters: [
+        { label: "Forward 1-1", size: 2 },
+        { label: "Half Back 3-2", size: 3 },
+        { label: "Centre/Centre Back 3-2", size: 3 }
+      ]
+    });
+
+    // Template D (weighted lower)
+    templates.push({
+      weight: 60,
+      clusters: [
+        { label: "Forward 1-1", size: 2 },
+        { label: "Centre 1-1", size: 2 },
+        { label: "Back 4-3", size: 4 }
+      ]
+    });
+  }
+
+  return templates;
+}
+
+function getTemplates_132(size) {
+  const templates = [];
+
+  if (size === 6) {
+    templates.push({ weight: 100, type: "core_only" });
+  }
+
+  if (size === 8) {
+    templates.push({
+      weight: 100,
+      clusters: [
+        { label: "Wing/Forward/Centre 4-3", size: 4 },
+        { label: "Back/Wing 4-3", size: 4 }
+      ]
+    });
+  }
+
+  if (size === 9) {
+    templates.push({
+      weight: 100,
+      clusters: [
+        { label: "Back 3-2", size: 3 },
+        { label: "Wing/Forward 3-2", size: 3 },
+        { label: "Wing/Centre 3-2", size: 3 }
+      ]
+    });
+  }
+
+  if (size === 10) {
+    templates.push({
+      weight: 100,
+      clusters: [
+        { label: "Back 3-2", size: 3 },
+        { label: "Wing/Centre 3-2", size: 3 },
+        { label: "Forward 1-1", size: 2 },
+        { label: "Wing 1-1", size: 2 }
+      ]
+    });
+  }
+
+  return templates;
+}
+
+/* =========================
+   TEMPLATE SELECTION
+========================= */
+
+function chooseTemplate(templates) {
+  if (!templates.length) return null;
+
+  templates.sort((a, b) => b.weight - a.weight);
+  return templates[0];
+}
+
+/* =========================
+   CLUSTER ASSIGNMENT
+========================= */
+
+function assignClusters(players, formation) {
+  const size = players.length;
+
+  if (!CLUSTER_SETTINGS.enableAdvancedClusters || size <= 6) {
+    return players;
+  }
+
+  if (formation === "3-3") {
+    applyFallback_33(players);
+  }
+
+  if (formation === "1-3-2") {
+    applyFallback_132(players);
+  }
+
+  const templates =
+    formation === "3-3"
+      ? getTemplates_33(size)
+      : getTemplates_132(size);
+
+  const chosen = chooseTemplate(templates);
+
+  if (!chosen || !chosen.clusters) {
+    return players;
+  }
+
+  const sorted = sortByRatingDesc(players);
+  let index = 0;
+
+  chosen.clusters.forEach(cluster => {
+    for (let i = 0; i < cluster.size; i++) {
+      if (sorted[index]) {
+        sorted[index].clusterLabel = cluster.label;
+        index++;
+      }
+    }
+  });
+
+  return sorted;
+}
+
+/* =========================
+   DISPLAY LABEL HANDLING
+========================= */
+
+function getDisplayPosition(player) {
+  if (player.clusterLabel === "super-sub") {
+    return "super-sub";
+  }
+
+  if (player.clusterLabel) {
+    return player.clusterLabel;
+  }
+
+  return player.position || "";
+}
+
+/* ============================================================
+   END FIX PASS 11
+============================================================ */
