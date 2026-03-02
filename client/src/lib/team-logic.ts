@@ -335,6 +335,96 @@ export function movePlayerBetweenTeams(
   return newTeams;
 }
 
+const TOURNAMENT_TEAM_LABELS = ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6"];
+
+/**
+ * Generates N balanced teams from a pool of players for tournament mode.
+ * Players are distributed via a snake draft across N teams, then positions assigned.
+ */
+export function generateMultipleTeams(
+  availablePlayers: Player[],
+  numTeams: number,
+  formation: FormationType,
+  options: GenerateTeamsOptions = { playerOffHandSelections: {} }
+): import("@shared/schema").TournamentTeam[] {
+  const { playerOffHandSelections, adminSettings = [] } = options;
+
+  const sortedPlayers = [...availablePlayers].sort((a, b) => {
+    const aRating = getEffectiveRating(a, playerOffHandSelections).rating;
+    const bRating = getEffectiveRating(b, playerOffHandSelections).rating;
+    return (bRating - aRating) + (Math.random() - 0.5) * 20;
+  });
+
+  const buckets: Player[][] = Array.from({ length: numTeams }, () => []);
+
+  // Snake draft across N teams
+  sortedPlayers.forEach((player, index) => {
+    const round = Math.floor(index / numTeams);
+    const pos = index % numTeams;
+    const teamIndex = round % 2 === 0 ? pos : numTeams - 1 - pos;
+    buckets[teamIndex].push(player);
+  });
+
+  // Balance optimization: run swap passes to minimize max rating difference
+  const getRating = (bucket: Player[]) =>
+    bucket.reduce((sum, p) => sum + getEffectiveRating(p, playerOffHandSelections).rating, 0);
+
+  for (let pass = 0; pass < 5; pass++) {
+    const ratings = buckets.map(getRating);
+    const maxIdx = ratings.indexOf(Math.max(...ratings));
+    const minIdx = ratings.indexOf(Math.min(...ratings));
+    if (maxIdx === minIdx) break;
+
+    let bestSwap: { fromIdx: number; toIdx: number } | null = null;
+    let bestImprovement = 0;
+    const diff = ratings[maxIdx] - ratings[minIdx];
+
+    for (let fi = 0; fi < buckets[maxIdx].length; fi++) {
+      for (let ti = 0; ti < buckets[minIdx].length; ti++) {
+        const fRating = getEffectiveRating(buckets[maxIdx][fi], playerOffHandSelections).rating;
+        const tRating = getEffectiveRating(buckets[minIdx][ti], playerOffHandSelections).rating;
+        const newDiff = Math.abs(diff - (fRating - tRating) * 2);
+        const improvement = Math.abs(diff) - newDiff;
+        if (improvement > bestImprovement) {
+          bestImprovement = improvement;
+          bestSwap = { fromIdx: fi, toIdx: ti };
+        }
+      }
+    }
+
+    if (bestSwap) {
+      const temp = buckets[maxIdx][bestSwap.fromIdx];
+      buckets[maxIdx][bestSwap.fromIdx] = buckets[minIdx][bestSwap.toIdx];
+      buckets[minIdx][bestSwap.toIdx] = temp;
+    } else break;
+  }
+
+  return buckets.map((players, i) => {
+    const assigned = assignFormationRoles(players, formation, playerOffHandSelections, adminSettings);
+    return {
+      id: `team-${i + 1}`,
+      label: TOURNAMENT_TEAM_LABELS[i] || `Team ${i + 1}`,
+      players: assigned,
+      totalRating: assigned.reduce((sum, p) => sum + p.ratingUsed, 0),
+      formation,
+    };
+  });
+}
+
+/**
+ * Generates round-robin fixtures for a list of tournament teams.
+ */
+export function generateRoundRobin(teams: import("@shared/schema").TournamentTeam[]): import("@shared/schema").TournamentFixture[] {
+  const fixtures: import("@shared/schema").TournamentFixture[] = [];
+  let id = 0;
+  for (let i = 0; i < teams.length; i++) {
+    for (let j = i + 1; j < teams.length; j++) {
+      fixtures.push({ id: id++, teamA: teams[i], teamB: teams[j], result: null });
+    }
+  }
+  return fixtures;
+}
+
 /**
  * Creates a deep copy of teams for history
  */

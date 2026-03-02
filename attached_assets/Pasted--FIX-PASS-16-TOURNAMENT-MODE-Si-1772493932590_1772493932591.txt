@@ -1,0 +1,189 @@
+/* ============================================================
+   FIX PASS 16 – TOURNAMENT MODE (Single Session Round Robin)
+   ============================================================ */
+
+/* ================================
+   1. GLOBAL TOURNAMENT STATE
+   ================================ */
+
+state.tournament = {
+  active: false,
+  finalised: false,
+  teams: [],          // snapshot of teams at confirm
+  fixtures: [],       // generated round robin schedule
+  results: {},        // { fixtureId: "A" | "B" | "draw" }
+  completedCount: 0
+};
+
+
+/* ================================
+   2. CONFIRM → CREATE TOURNAMENT
+   ================================ */
+
+function confirmTournamentFromGenerate(generatedTeams) {
+  if (state.tournament.active && !state.tournament.finalised) {
+    const proceed = confirm(
+      "Generating a new tournament will delete the active tournament and its pending results. Continue?"
+    );
+    if (!proceed) return;
+  }
+
+  const snapshot = JSON.parse(JSON.stringify(generatedTeams));
+
+  state.tournament = {
+    active: true,
+    finalised: false,
+    teams: snapshot,
+    fixtures: generateRoundRobin(snapshot),
+    results: {},
+    completedCount: 0
+  };
+
+  navigateTo("tournament");
+}
+
+
+/* ================================
+   3. ROUND ROBIN GENERATOR
+   ================================ */
+
+function generateRoundRobin(teams) {
+  const fixtures = [];
+  let id = 0;
+
+  for (let i = 0; i < teams.length; i++) {
+    for (let j = i + 1; j < teams.length; j++) {
+      fixtures.push({
+        id: id++,
+        teamA: teams[i],
+        teamB: teams[j],
+        result: null
+      });
+    }
+  }
+
+  return fixtures;
+}
+
+
+/* ================================
+   4. TOURNAMENT RESULTS UI LOGIC
+   ================================ */
+
+function setTournamentResult(fixtureId, result) {
+  const fixture = state.tournament.fixtures.find(f => f.id === fixtureId);
+  if (!fixture) return;
+
+  fixture.result = result;
+  state.tournament.results[fixtureId] = result;
+
+  state.tournament.completedCount =
+    state.tournament.fixtures.filter(f => f.result !== null).length;
+
+  renderTournament();
+}
+
+
+/* ================================
+   5. PROGRESS INDICATOR
+   ================================ */
+
+function getTournamentProgress() {
+  const total = state.tournament.fixtures.length;
+  const done = state.tournament.completedCount;
+  return { done, total };
+}
+
+
+/* ================================
+   6. FINALISE TOURNAMENT
+   ================================ */
+
+function finaliseTournament() {
+  if (state.tournament.completedCount !== state.tournament.fixtures.length) {
+    alert("All matches must be completed before finalising.");
+    return;
+  }
+
+  const K = state.settings.kFactor * 0.7; // 70% reduced weighting
+
+  state.tournament.fixtures.forEach(fixture => {
+    applyTournamentRatingChange(
+      fixture.teamA,
+      fixture.teamB,
+      fixture.result,
+      K
+    );
+  });
+
+  state.tournament.finalised = true;
+  alert("Tournament finalised. Ratings updated.");
+}
+
+
+/* ================================
+   7. RATING ENGINE (WIN/LOSS/DRAW)
+   ================================ */
+
+function applyTournamentRatingChange(teamA, teamB, result, K) {
+
+  const avgA = averageRating(teamA.players);
+  const avgB = averageRating(teamB.players);
+
+  const expectedA = 1 / (1 + Math.pow(10, (avgB - avgA) / 400));
+  const expectedB = 1 - expectedA;
+
+  let scoreA = 0.5;
+  let scoreB = 0.5;
+
+  if (result === "A") {
+    scoreA = 1;
+    scoreB = 0;
+  } else if (result === "B") {
+    scoreA = 0;
+    scoreB = 1;
+  }
+
+  const deltaA = K * (scoreA - expectedA);
+  const deltaB = K * (scoreB - expectedB);
+
+  teamA.players.forEach(p => {
+    p.rating += deltaA;
+  });
+
+  teamB.players.forEach(p => {
+    p.rating += deltaB;
+  });
+}
+
+
+/* ================================
+   8. UTILITY
+   ================================ */
+
+function averageRating(players) {
+  const total = players.reduce((sum, p) => sum + p.rating, 0);
+  return total / players.length;
+}
+
+
+/* ================================
+   9. UI NOTES (IMPLEMENT)
+   ================================ */
+
+/*
+Tournament Tab Layout:
+
+- Header:
+  Tournament Progress: X / Y completed
+  Progress bar
+
+- Fixture list:
+  Team A vs Team B
+  [A Win] [Draw] [B Win]
+
+- Finalise Button (disabled until all matches complete)
+
+- If finalised:
+  Show "Finalised" badge
+*/

@@ -32,7 +32,9 @@ export const DEFAULT_GENERATION_WORKSPACE: GenerationWorkspace = {
   pendingMatch: null,
   pendingMatchPoolA: null,
   pendingMatchPoolB: null,
-  teamsLocked: false
+  teamsLocked: false,
+  tournamentTeamCount: 3,
+  tournament: null,
 };
 
 // Migrate legacy workspace data to new schema
@@ -98,7 +100,10 @@ function migrateWorkspace(saved: any): GenerationWorkspace {
   if (saved.teamTemplates && Array.isArray(saved.teamTemplates)) {
     migrated.teamTemplates = saved.teamTemplates;
   }
-  
+
+  if (saved.tournamentTeamCount) migrated.tournamentTeamCount = saved.tournamentTeamCount;
+  if (saved.tournament) migrated.tournament = saved.tournament;
+
   return migrated;
 }
 

@@ -49,8 +49,17 @@ Preferred communication style: Simple, everyday language.
 - **Match Snapshots**: Confirm creates MatchTeamSnapshot with rating snapshots (ratingUsed, usedOffHand, team, position) for each player
 - **Rating System**: Delta-based. On match completion, stores `ratingDelta` and `ratingFieldUsed` in snapshot. On deletion, reverses via `currentRating -= ratingDelta`. Legacy snapshots with ratingBefore/ratingAfter are supported as fallback.
 - **Pool Movement**: Players can be moved between Pool A and Pool B after generation, preserving team color. Position revalidated on cross-pool moves.
-- **Modes**: Standard mode and Two Pools mode implemented; Preset Teams and Tournament modes are placeholders
+- **Modes**: Standard mode, Two Pools mode, and Tournament mode implemented; Preset Teams mode is a placeholder
 - **Delete Confirmations**: AlertDialog confirmation required before deleting matches or players
+
+## Tournament Mode
+- **Generation**: Select players + number of teams (2-6), choose a formation; `generateMultipleTeams` splits players evenly into N teams using snake draft
+- **Round Robin Fixtures**: `generateRoundRobin` creates all N*(N-1)/2 fixtures; stored in `generationWorkspace.tournament` as `TournamentState`
+- **Tournament Page**: `/tournament` shows progress bar, all fixture cards with result buttons (Team A Win / Draw / Team B Win), live standings table
+- **Result Recording**: Each fixture result can be set/changed until finalised; `completedCount` updates automatically
+- **Finalise**: All fixtures must have results before finalising; `finaliseTournament` applies Elo rating changes with 70% K-factor (tournament modifier) to all players and marks the tournament as finalised
+- **Reset**: Clears tournament state from workspace; rating changes applied before finalisation are not reversed
+- **Rating Impact**: Win = +pts, Loss = -pts, Draw = proportional; uses same `calculateRatingAdjustments` as standard matches but with `tournamentMode: true`
 
 ## Two Pools Mode
 - **Pool Assignment**: Each selected player must be assigned to Pool A or Pool B before generation

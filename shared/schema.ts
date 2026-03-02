@@ -179,6 +179,30 @@ export interface TeamFormations {
   white: FormationType;
 }
 
+// Tournament types
+export interface TournamentTeam {
+  id: string;
+  label: string;
+  players: PlayerWithAssignedFormationRole[];
+  totalRating: number;
+  formation: FormationType;
+}
+
+export interface TournamentFixture {
+  id: number;
+  teamA: TournamentTeam;
+  teamB: TournamentTeam;
+  result: "A" | "B" | "draw" | null;
+}
+
+export interface TournamentState {
+  active: boolean;
+  finalised: boolean;
+  teams: TournamentTeam[];
+  fixtures: TournamentFixture[];
+  completedCount: number;
+}
+
 // Generation workspace state (persisted globally)
 export interface GenerationWorkspace {
   mode: GenerationMode;
@@ -197,6 +221,8 @@ export interface GenerationWorkspace {
   pendingMatchPoolA: PendingMatch | null;
   pendingMatchPoolB: PendingMatch | null;
   teamsLocked: boolean;
+  tournamentTeamCount: number;
+  tournament: TournamentState | null;
 }
 
 // Pending match state (teams locked, waiting for scores)

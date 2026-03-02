@@ -9,6 +9,7 @@ import PlayersPage from "@/pages/players";
 import GeneratePage from "@/pages/generate";
 import ResultsPage from "@/pages/results";
 import SettingsPage from "@/pages/settings";
+import TournamentPage from "@/pages/tournament";
 import { StatsPage, RotationPage } from "@/pages/placeholders";
 import NotFound from "@/pages/not-found";
 
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/stats" component={StatsPage} />
       <Route path="/rotation" component={RotationPage} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/tournament" component={TournamentPage} />
       <Route component={NotFound} />
     </Switch>
   );

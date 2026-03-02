@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
-import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, FORMATION_ROLES, createMatchTeamSnapshot } from "@/lib/team-logic";
+import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, FORMATION_ROLES, createMatchTeamSnapshot, generateMultipleTeams } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,10 +21,13 @@ import {
   ChevronRight,
   ArrowLeftRight,
   CheckCircle2,
-  Clock
+  Clock,
+  Trophy,
+  Minus,
+  Plus
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player } from "@shared/schema";
+import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player, TournamentTeam } from "@shared/schema";
 import { useLocation } from "wouter";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
@@ -51,13 +54,15 @@ export default function GeneratePage() {
     visibilitySettings,
     saveTeamTemplate,
     loadFromTemplate,
-    adminSettings
+    adminSettings,
+    confirmTournament
   } = useApp();
   
   const { showRatings = true, showPositions = true } = visibilitySettings || {};
   const [, navigate] = useLocation();
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showGenerated, setShowGenerated] = useState(false);
+  const [tournamentTeams, setTournamentTeams] = useState<TournamentTeam[] | null>(null);
 
   const { 
     mode, 
@@ -70,7 +75,9 @@ export default function GeneratePage() {
     poolAssignments,
     twoPoolsTeams,
     teamTemplates,
-    teamsLocked
+    teamsLocked,
+    tournamentTeamCount = 3,
+    tournament
   } = generationWorkspace;
 
   // Filter to only show players (no "active" filter during generation per requirements)
@@ -165,7 +172,26 @@ export default function GeneratePage() {
     ? "Odd number of players" 
     : null;
 
+  const handleGenerateTournament = () => {
+    const selectedPlayers = players.filter(p => selectedPlayerIds.includes(p.id));
+    if (selectedPlayers.length < tournamentTeamCount) return;
+    const formation = teamFormations.black;
+    const teams = generateMultipleTeams(selectedPlayers, tournamentTeamCount, formation, { playerOffHandSelections, adminSettings });
+    setTournamentTeams(teams);
+    setShowGenerated(true);
+  };
+
+  const handleConfirmTournament = () => {
+    if (!tournamentTeams) return;
+    confirmTournament(tournamentTeams);
+    navigate("/tournament");
+  };
+
   const handleGenerate = () => {
+    if (mode === "tournament") {
+      handleGenerateTournament();
+      return;
+    }
     if (mode === "two_pools") {
       // Generate teams for each pool separately using pool-specific formations
       if (unassignedPlayers.length > 0) return; // Block if any unassigned
@@ -355,12 +381,15 @@ export default function GeneratePage() {
     && unassignedPlayers.length === 0 
     && selectedPlayerIds.length > 0
     && (poolAPlayers.length >= 2 || poolBPlayers.length >= 2);
+  const canGenerateTournament = mode === "tournament" && selectedPlayerIds.length >= tournamentTeamCount;
   
-  const canGenerate = mode === "two_pools" ? canGenerateTwoPools : canGenerateStandard;
+  const canGenerate = mode === "two_pools" ? canGenerateTwoPools : mode === "tournament" ? canGenerateTournament : canGenerateStandard;
   
-  const hasGeneratedTeams = showGenerated && (mode === "two_pools" 
-    ? (twoPoolsTeams?.poolA || twoPoolsTeams?.poolB) 
-    : generatedTeams);
+  const hasGeneratedTeams = showGenerated && (
+    mode === "two_pools" ? (twoPoolsTeams?.poolA || twoPoolsTeams?.poolB) :
+    mode === "tournament" ? (tournamentTeams && tournamentTeams.length > 0) :
+    generatedTeams
+  );
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -394,7 +423,7 @@ export default function GeneratePage() {
                     twoPoolsTeams: null,
                     poolAssignments: {} 
                   })}
-                  disabled={m === "preset_teams" || m === "tournament"}
+                  disabled={m === "preset_teams"}
                   className="text-xs"
                   data-testid={`button-mode-${m}`}
                 >
@@ -406,7 +435,82 @@ export default function GeneratePage() {
         </Card>
 
         {/* Per-Team Formation Selectors */}
-        {mode === "two_pools" ? (
+        {mode === "tournament" ? (
+          /* Tournament Mode: Single Formation + Team Count */
+          <Card className="border-border/50">
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Tournament Setup
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Formation (all teams)</Label>
+                <div className="flex gap-2">
+                  {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                    <Button
+                      key={f}
+                      variant={teamFormations.black === f ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTeamFormation("black", f)}
+                      className="text-xs flex-1"
+                      data-testid={`button-tournament-formation-${f}`}
+                    >
+                      {FORMATION_LABELS[f]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Number of Teams</Label>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0 rounded-lg"
+                    onClick={() => updateWorkspace({ tournamentTeamCount: Math.max(2, tournamentTeamCount - 1) })}
+                    disabled={tournamentTeamCount <= 2}
+                    data-testid="button-tournament-teams-minus"
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                  <span className="font-mono font-bold text-lg w-8 text-center" data-testid="text-tournament-team-count">{tournamentTeamCount}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0 rounded-lg"
+                    onClick={() => updateWorkspace({ tournamentTeamCount: Math.min(6, tournamentTeamCount + 1) })}
+                    disabled={tournamentTeamCount >= 6}
+                    data-testid="button-tournament-teams-plus"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {tournamentTeamCount * (tournamentTeamCount - 1) / 2} fixtures
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Select at least {tournamentTeamCount} players.</p>
+              </div>
+              {tournament?.active && !tournament.finalised && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <Trophy className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                  <span className="text-[10px] text-amber-300">
+                    Tournament in progress ({tournament.completedCount}/{tournament.fixtures.length} fixtures done)
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto h-6 px-2 text-[10px] text-amber-300 hover:text-amber-200"
+                    onClick={() => navigate("/tournament")}
+                    data-testid="button-goto-tournament"
+                  >
+                    View →
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : mode === "two_pools" ? (
           /* Two Pools Mode: Per-Pool Formations */
           <Card className="border-border/50">
             <CardHeader className="pb-2 pt-3 px-4">
@@ -777,8 +881,10 @@ export default function GeneratePage() {
                 onClick={handleGenerate}
                 data-testid="button-generate"
               >
-                <RefreshCw className="h-4 w-4" />
-                Generate Teams ({selectedPlayerIds.length} players)
+                {mode === "tournament" ? <Trophy className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
+                {mode === "tournament" 
+                  ? `Generate Tournament Teams (${selectedPlayerIds.length}/${tournamentTeamCount} players min)` 
+                  : `Generate Teams (${selectedPlayerIds.length} players)`}
               </Button>
             </motion.div>
           ) : mode === "two_pools" && twoPoolsTeams ? (
@@ -888,6 +994,76 @@ export default function GeneratePage() {
                   >
                     <CheckCircle2 className="h-4 w-4" />
                     Confirm All
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          ) : (mode === "tournament" && tournamentTeams && tournamentTeams.length > 0) ? (
+            <motion.div
+              key="tournament-preview"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="space-y-4"
+            >
+              <div className="space-y-3">
+                {tournamentTeams.map((team) => (
+                  <Card key={team.label} className="border-border/50">
+                    <CardHeader className="pb-2 pt-3 px-4">
+                      <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                        <Trophy className="h-4 w-4 text-amber-400" />
+                        {team.label}
+                        {showRatings && (
+                          <Badge variant="outline" className="ml-auto text-[10px]">
+                            Avg {Math.round(team.players.reduce((s, p) => s + (p.ratingUsed ?? p.rating), 0) / Math.max(team.players.length, 1))}
+                          </Badge>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-4 pb-3">
+                      <div className="space-y-1">
+                        {team.players.map((player) => (
+                          <div key={player.id} className="flex items-center gap-2 py-1 border-b border-border/30 last:border-0">
+                            <span className="text-sm flex-1">{player.name}</span>
+                            {showPositions && player.position && (
+                              <Badge variant="secondary" className="text-[9px] py-0 px-1.5">{player.position}</Badge>
+                            )}
+                            {showRatings && (
+                              <span className="text-xs text-muted-foreground font-mono">{player.ratingUsed ?? player.rating}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Button 
+                  variant="outline" 
+                  className="w-full h-10 rounded-xl gap-2 text-sm"
+                  onClick={() => { setTournamentTeams(null); setShowGenerated(false); }}
+                  data-testid="button-reselect-tournament"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Reselect Players
+                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    variant="secondary"
+                    className="h-10 rounded-xl gap-2 text-sm"
+                    onClick={handleGenerateTournament}
+                    data-testid="button-reroll-tournament"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Re-roll
+                  </Button>
+                  <Button 
+                    className="h-10 rounded-xl gap-2 text-sm bg-amber-600 hover:bg-amber-500"
+                    onClick={handleConfirmTournament}
+                    data-testid="button-confirm-tournament"
+                  >
+                    <Trophy className="h-4 w-4" />
+                    Start Tournament
                   </Button>
                 </div>
               </div>

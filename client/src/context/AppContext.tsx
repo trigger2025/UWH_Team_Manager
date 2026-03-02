@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams, TeamTemplate, TeamTemplateStructure, PlayerWithAssignedFormationRole } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams, TeamTemplate, TeamTemplateStructure, PlayerWithAssignedFormationRole, TournamentTeam, TournamentFixture, TournamentState } from "@shared/schema";
 import { storage, AppData, DEFAULT_GENERATION_WORKSPACE, DEFAULT_VISIBILITY_SETTINGS } from "@/lib/storage";
 import { calculateRatingAdjustments, applyRatingAdjustments } from "@/lib/rating-logic";
+import { generateRoundRobin } from "@/lib/team-logic";
 
 const MAX_HISTORY_SIZE = 10;
 
@@ -45,6 +46,11 @@ interface AppState extends AppData {
   addPresetTeam: (team: Omit<PresetTeam, "id">) => void;
   updatePresetTeam: (id: number, updates: Partial<PresetTeam>) => void;
   deletePresetTeam: (id: number) => void;
+  // Tournament functions
+  confirmTournament: (teams: TournamentTeam[]) => void;
+  setTournamentFixtureResult: (fixtureId: number, result: "A" | "B" | "draw") => void;
+  finaliseTournament: () => void;
+  resetTournament: () => void;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -790,6 +796,138 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, []);
 
+  // --- Tournament ---
+
+  const confirmTournament = useCallback((teams: TournamentTeam[]) => {
+    const fixtures = generateRoundRobin(teams);
+    const tournament: TournamentState = {
+      active: true,
+      finalised: false,
+      teams,
+      fixtures,
+      completedCount: 0,
+    };
+    setState(prev => ({
+      ...prev,
+      generationWorkspace: {
+        ...prev.generationWorkspace,
+        tournament,
+      }
+    }));
+  }, []);
+
+  const setTournamentFixtureResult = useCallback((fixtureId: number, result: "A" | "B" | "draw") => {
+    setState(prev => {
+      const t = prev.generationWorkspace.tournament;
+      if (!t) return prev;
+      const updatedFixtures = t.fixtures.map((f: TournamentFixture) =>
+        f.id === fixtureId ? { ...f, result } : f
+      );
+      const completedCount = updatedFixtures.filter((f: TournamentFixture) => f.result !== null).length;
+      return {
+        ...prev,
+        generationWorkspace: {
+          ...prev.generationWorkspace,
+          tournament: { ...t, fixtures: updatedFixtures, completedCount },
+        }
+      };
+    });
+  }, []);
+
+  const finaliseTournament = useCallback(() => {
+    setState(prev => {
+      const t = prev.generationWorkspace.tournament;
+      if (!t || t.finalised) return prev;
+      if (t.completedCount !== t.fixtures.length) return prev;
+
+      const kFactorSetting = prev.adminSettings.find((s: AdminSettings) => s.key === "rating_strength");
+      const kFactor = kFactorSetting ? parseInt(kFactorSetting.value as string) : 32;
+
+      let updatedPlayers = [...prev.players];
+
+      t.fixtures.forEach((fixture: TournamentFixture) => {
+        if (!fixture.result) return;
+
+        const blackScore = fixture.result === "A" ? 1 : fixture.result === "B" ? 0 : 0;
+        const whiteScore = fixture.result === "B" ? 1 : fixture.result === "A" ? 0 : 0;
+        const draw = fixture.result === "draw";
+
+        const teamAAsGenerated = {
+          color: "Black" as const,
+          formation: fixture.teamA.formation,
+          players: fixture.teamA.players,
+          totalRating: fixture.teamA.totalRating,
+        };
+        const teamBAsGenerated = {
+          color: "White" as const,
+          formation: fixture.teamB.formation,
+          players: fixture.teamB.players,
+          totalRating: fixture.teamB.totalRating,
+        };
+
+        const adjustments = calculateRatingAdjustments(
+          teamAAsGenerated,
+          teamBAsGenerated,
+          blackScore,
+          whiteScore,
+          kFactor,
+          true
+        );
+
+        updatedPlayers = updatedPlayers.map(player => {
+          const adj = adjustments.find(a => a.playerId === player.id);
+          if (!adj) return player;
+
+          const aWon = fixture.result === "A";
+          const bWon = fixture.result === "B";
+          const won = (adj.change > 0 && aWon) || (adj.change < 0 && bWon);
+          const lost = (adj.change > 0 && bWon) || (adj.change < 0 && aWon);
+
+          if (adj.usedOffHand && player.weakHandEnabled && player.weakHandRating !== null) {
+            const newRating = Math.round(Math.min(Math.max(player.weakHandRating + adj.change, 0), 1000));
+            return {
+              ...player,
+              weakHandRating: newRating,
+              wins: player.wins + (won ? 1 : 0),
+              losses: player.losses + (lost ? 1 : 0),
+              draws: player.draws + (draw ? 1 : 0),
+              ratingHistory: [...player.ratingHistory as any[], { date: new Date().toISOString(), rating: player.rating, offHandRating: newRating }],
+            };
+          }
+
+          const newRating = Math.round(Math.min(Math.max(player.rating + adj.change, 0), 1000));
+          return {
+            ...player,
+            rating: newRating,
+            wins: player.wins + (won ? 1 : 0),
+            losses: player.losses + (lost ? 1 : 0),
+            draws: player.draws + (draw ? 1 : 0),
+            ratingHistory: [...player.ratingHistory as any[], { date: new Date().toISOString(), rating: newRating }],
+          };
+        });
+      });
+
+      return {
+        ...prev,
+        players: updatedPlayers,
+        generationWorkspace: {
+          ...prev.generationWorkspace,
+          tournament: { ...t, finalised: true },
+        }
+      };
+    });
+  }, []);
+
+  const resetTournament = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      generationWorkspace: {
+        ...prev.generationWorkspace,
+        tournament: null,
+      }
+    }));
+  }, []);
+
   return (
     <AppContext.Provider value={{
       ...state,
@@ -819,7 +957,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loadFromTemplate,
       addPresetTeam,
       updatePresetTeam,
-      deletePresetTeam
+      deletePresetTeam,
+      confirmTournament,
+      setTournamentFixtureResult,
+      finaliseTournament,
+      resetTournament
     }}>
       {children}
     </AppContext.Provider>
