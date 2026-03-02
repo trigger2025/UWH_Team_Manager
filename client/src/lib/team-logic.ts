@@ -37,114 +37,6 @@ const EXTRA_SLOT_PRIORITY: Record<FormationType, string[]> = {
   "1-3-2": ["Back", "Wing", "Centre", "Forward"],
 };
 
-function fillCoreSlots(
-  players: PlayerWithAssignedFormationRole[],
-  formation: FormationType
-): { coreIds: Set<number>; extras: PlayerWithAssignedFormationRole[] } {
-  const unassigned = [...players];
-  const coreIds = new Set<number>();
-
-  function getPrefs(player: PlayerWithAssignedFormationRole): string[] {
-    const pref = (player.formationPreferences as any)?.[formation];
-    const main = pref?.main as string | undefined;
-    const alts = (pref?.alternates as string[]) || [];
-    return [main, ...alts].filter(Boolean) as string[];
-  }
-
-  function pickForSlot(role: string, fallbackRoles: string[] = []): void {
-    let candidates = unassigned.filter(p => getPrefs(p).includes(role));
-
-    if (candidates.length === 0 && fallbackRoles.length > 0) {
-      for (const fb of fallbackRoles) {
-        candidates = unassigned.filter(p => getPrefs(p).includes(fb));
-        if (candidates.length > 0) break;
-      }
-    }
-
-    if (candidates.length === 0) candidates = [...unassigned];
-
-    candidates.sort((a, b) => b.ratingUsed - a.ratingUsed);
-
-    const chosen = candidates[0];
-    if (!chosen) return;
-
-    coreIds.add(chosen.id);
-    const idx = unassigned.findIndex(p => p.id === chosen.id);
-    if (idx !== -1) unassigned.splice(idx, 1);
-  }
-
-  if (formation === "3-3") {
-    pickForSlot("Centre", ["Forward"]);
-    pickForSlot("Centre Back", ["Half Back"]);
-    pickForSlot("Half Back");
-    pickForSlot("Half Back");
-    pickForSlot("Forward");
-    pickForSlot("Forward");
-  }
-
-  if (formation === "1-3-2") {
-    pickForSlot("Back");
-    pickForSlot("Back");
-    pickForSlot("Centre");
-    pickForSlot("Wing");
-    pickForSlot("Wing");
-    pickForSlot("Forward");
-  }
-
-  return { coreIds, extras: unassigned };
-}
-
-function deriveClusterLabel(
-  player: PlayerWithAssignedFormationRole,
-  formation: FormationType
-): string {
-  const pref = (player.formationPreferences as any)?.[formation];
-  const main = pref?.main as string | undefined;
-  const alts = (pref?.alternates as string[]) || [];
-  const all = [main, ...alts].filter(Boolean) as string[];
-
-  if (formation === "3-3") {
-    if (all.includes("Centre") && all.includes("Centre Back")) return "Centre/Centre Back 3-2";
-    if (all.includes("Half Back")) return "Half Back 3-2";
-    if (all.includes("Forward")) return "Forward 1-1";
-  }
-
-  if (formation === "1-3-2") {
-    if (all.includes("Back")) return "Back 3-2";
-    if (all.includes("Wing")) return "Wing 3-2";
-    if (all.includes("Forward")) return "Forward 1-1";
-  }
-
-  return main || "Flexible";
-}
-
-export function applyClusterLabels(
-  players: PlayerWithAssignedFormationRole[],
-  formation: FormationType
-): PlayerWithAssignedFormationRole[] {
-  const size = players.length;
-  if (size <= 6) return players.map(p => ({ ...p, clusterLabel: undefined }));
-
-  const { coreIds, extras } = fillCoreSlots(players, formation);
-
-  if (extras.length === 0) return players.map(p => ({ ...p, clusterLabel: undefined }));
-
-  if (extras.length === 1) {
-    const extraId = extras[0].id;
-    return players.map(p => ({ ...p, clusterLabel: p.id === extraId ? "super-sub" : undefined }));
-  }
-
-  const clusterMap = new Map<number, string>();
-  for (const extra of extras) {
-    clusterMap.set(extra.id, deriveClusterLabel(extra, formation));
-  }
-
-  return players.map(p => ({
-    ...p,
-    clusterLabel: coreIds.has(p.id) ? undefined : clusterMap.get(p.id),
-  }));
-}
-
 export function getPositionBonusSettings(adminSettings: AdminSettings[]): { mainPositionBonus: number; alternatePositionBonus: number } {
   const mainSetting = adminSettings.find(s => s.key === "main_position_bonus");
   const altSetting = adminSettings.find(s => s.key === "alternate_position_bonus");
@@ -361,14 +253,8 @@ export function generateTeams(
     } else break;
   }
 
-  const blackAssigned = applyClusterLabels(
-    assignFormationRoles(blackPlayers, teamFormationMap.black, playerOffHandSelections, adminSettings),
-    teamFormationMap.black
-  );
-  const whiteAssigned = applyClusterLabels(
-    assignFormationRoles(whitePlayers, teamFormationMap.white, playerOffHandSelections, adminSettings),
-    teamFormationMap.white
-  );
+  const blackAssigned = assignFormationRoles(blackPlayers, teamFormationMap.black, playerOffHandSelections, adminSettings);
+  const whiteAssigned = assignFormationRoles(whitePlayers, teamFormationMap.white, playerOffHandSelections, adminSettings);
 
   return {
     black: {
@@ -438,14 +324,8 @@ export function movePlayerBetweenTeams(
   const sourceBasePlayers = newTeams[sourceKey].players.map(p => p as Player);
   const targetBasePlayers = newTeams[targetKey].players.map(p => p as Player);
   
-  const sourceReassigned = applyClusterLabels(
-    assignFormationRoles(sourceBasePlayers, newTeams[sourceKey].formation, offHandMap, adminSettings),
-    newTeams[sourceKey].formation
-  );
-  const targetReassigned = applyClusterLabels(
-    assignFormationRoles(targetBasePlayers, newTeams[targetKey].formation, offHandMap, adminSettings),
-    newTeams[targetKey].formation
-  );
+  const sourceReassigned = assignFormationRoles(sourceBasePlayers, newTeams[sourceKey].formation, offHandMap, adminSettings);
+  const targetReassigned = assignFormationRoles(targetBasePlayers, newTeams[targetKey].formation, offHandMap, adminSettings);
   
   newTeams[sourceKey].players = sourceReassigned;
   newTeams[targetKey].players = targetReassigned;
@@ -515,45 +395,4 @@ export function createMatchTeamSnapshot(
     useOffHandRatings: anyUsedOffHand, // Keep for backwards compatibility
     timestamp: new Date().toISOString()
   };
-}
-
-export function getPositionCode(position: string): string {
-  switch (position) {
-    case "Forward":     return "F";
-    case "Centre":      return "C";
-    case "Half Back":   return "HB";
-    case "Centre Back": return "CB";
-    case "Wing":        return "W";
-    case "Back":        return "B";
-    default:            return position;
-  }
-}
-
-export function formatDisplayRole(
-  clusterLabel: string | undefined,
-  assignedPosition: string
-): string {
-  if (!clusterLabel) return getPositionCode(assignedPosition);
-
-  if (clusterLabel === "super-sub") return "Super-sub";
-
-  if (clusterLabel.endsWith(" 1-1")) {
-    const role = clusterLabel.slice(0, -4);
-    return `${getPositionCode(role)} (1-1)`;
-  }
-
-  if (clusterLabel.includes("/")) {
-    const stripped = clusterLabel.replace(/ \d+-\d+$/, "");
-    return stripped.split("/").map(p => getPositionCode(p.trim())).join("/");
-  }
-
-  if (clusterLabel.endsWith(" 3-2") || clusterLabel.endsWith(" 4-3")) {
-    const role = clusterLabel.replace(/ \d+-\d+$/, "");
-    return getPositionCode(role);
-  }
-
-  if (clusterLabel === "Flexible") return "Flex";
-
-  const code = getPositionCode(clusterLabel);
-  return code;
 }

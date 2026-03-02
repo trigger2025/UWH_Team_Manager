@@ -106,8 +106,6 @@ export interface PlayerWithAssignedFormationRole extends Player {
   // Rating snapshot at generation time
   ratingUsed: number;
   usedOffHand: boolean;
-  // Cluster label for teams > 6 players (e.g. "Forward", "Back Line", "super-sub")
-  clusterLabel?: string;
 }
 
 export interface GeneratedTeam {

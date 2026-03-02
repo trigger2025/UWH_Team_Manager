@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useApp } from "@/context/AppContext";
-import { getPositionCode } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -477,7 +476,7 @@ function MatchCard({
                       <div className="flex justify-between items-center">
                         <span className="font-medium">{p.playerName ?? p.name}</span>
                         {showPositions && (
-                          <Badge variant="secondary" className="text-[7px] px-1 py-0">{getPositionCode(p.position ?? p.assignedPosition ?? "")}</Badge>
+                          <Badge variant="secondary" className="text-[7px] px-1 py-0">{p.position ?? p.assignedPosition}</Badge>
                         )}
                       </div>
                       {showRatings && (
@@ -508,7 +507,7 @@ function MatchCard({
                       <div className="flex justify-between items-center">
                         <span className="font-medium">{p.playerName ?? p.name}</span>
                         {showPositions && (
-                          <Badge variant="secondary" className="text-[7px] px-1 py-0">{getPositionCode(p.position ?? p.assignedPosition ?? "")}</Badge>
+                          <Badge variant="secondary" className="text-[7px] px-1 py-0">{p.position ?? p.assignedPosition}</Badge>
                         )}
                       </div>
                       {showRatings && (
