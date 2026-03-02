@@ -1,0 +1,222 @@
+// ===============================
+// FIX PASS 12 – CORE LOCK ENGINE
+// ===============================
+
+/*
+GOAL:
+1. Lock core 6 formation positions first.
+2. Never allow clusters to reassign those players.
+3. Build clusters only from remaining players.
+4. Preserve fallback logic.
+*/
+
+type Position =
+  | "FORWARD"
+  | "HALF_BACK"
+  | "CENTRE"
+  | "CENTRE_BACK"
+  | "WING"
+  | "BACK";
+
+interface Player {
+  id: string;
+  name: string;
+  rating: number;
+  preferredPositions: Position[];
+  alternatePositions?: Position[];
+}
+
+interface AssignedPlayer extends Player {
+  assignedPosition: string;
+  locked: boolean;
+}
+
+// ===============================
+// CONFIG WEIGHTS
+// ===============================
+
+const PREF_WEIGHT = 100;
+const ALT_WEIGHT = 40;
+const NON_MATCH_PENALTY = -1000;
+
+// ===============================
+// CORE FORMATION MAP
+// ===============================
+
+function getCoreSlots(formation: "3-3" | "1-3-2"): Position[] {
+  if (formation === "3-3") {
+    return [
+      "FORWARD",
+      "FORWARD",
+      "HALF_BACK",
+      "HALF_BACK",
+      "CENTRE",
+      "CENTRE_BACK",
+    ];
+  }
+
+  // 1-3-2
+  return [
+    "FORWARD",
+    "WING",
+    "WING",
+    "CENTRE",
+    "BACK",
+    "BACK",
+  ];
+}
+
+// ===============================
+// POSITION SCORE
+// ===============================
+
+function positionScore(player: Player, slot: Position): number {
+  if (player.preferredPositions.includes(slot)) {
+    return PREF_WEIGHT;
+  }
+
+  if (player.alternatePositions?.includes(slot)) {
+    return ALT_WEIGHT;
+  }
+
+  return NON_MATCH_PENALTY;
+}
+
+// ===============================
+// CORE LOCK ASSIGNMENT
+// ===============================
+
+function lockCorePlayers(
+  players: Player[],
+  formation: "3-3" | "1-3-2"
+): AssignedPlayer[] {
+  const coreSlots = getCoreSlots(formation);
+  const remaining = [...players];
+  const assigned: AssignedPlayer[] = [];
+
+  coreSlots.forEach((slot) => {
+    let bestIndex = -1;
+    let bestScore = -Infinity;
+
+    remaining.forEach((player, index) => {
+      const score = positionScore(player, slot);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    });
+
+    if (bestIndex !== -1 && bestScore > NON_MATCH_PENALTY) {
+      const chosen = remaining.splice(bestIndex, 1)[0];
+      assigned.push({
+        ...chosen,
+        assignedPosition: slot,
+        locked: true,
+      });
+    }
+  });
+
+  return assigned;
+}
+
+// ===============================
+// CLUSTER ENGINE (ONLY EXTRAS)
+// ===============================
+
+function buildClusters(
+  lockedPlayers: AssignedPlayer[],
+  allPlayers: Player[],
+  formation: "3-3" | "1-3-2"
+): AssignedPlayer[] {
+  const lockedIds = new Set(lockedPlayers.map((p) => p.id));
+
+  const extras = allPlayers.filter((p) => !lockedIds.has(p.id));
+
+  if (extras.length === 0) {
+    return lockedPlayers;
+  }
+
+  // Super-sub only allowed if team size = 7
+  if (allPlayers.length === 7) {
+    const sorted = [...extras].sort(
+      (a, b) =>
+        (b.alternatePositions?.length || 0) -
+        (a.alternatePositions?.length || 0) ||
+        b.rating - a.rating
+    );
+
+    return [
+      ...lockedPlayers,
+      {
+        ...sorted[0],
+        assignedPosition: "SUPER-SUB",
+        locked: false,
+      },
+    ];
+  }
+
+  // Otherwise assign cluster labels but DO NOT touch locked players
+
+  const clusterAssigned: AssignedPlayer[] = extras.map((p) => ({
+    ...p,
+    assignedPosition: deriveClusterLabel(p, formation),
+    locked: false,
+  }));
+
+  return [...lockedPlayers, ...clusterAssigned];
+}
+
+// ===============================
+// CLEAN CLUSTER LABELS
+// ===============================
+
+function deriveClusterLabel(
+  player: Player,
+  formation: "3-3" | "1-3-2"
+): string {
+  if (formation === "3-3") {
+    if (
+      player.preferredPositions.includes("CENTRE") &&
+      player.preferredPositions.includes("CENTRE_BACK")
+    ) {
+      return "Centre/Centre Back 3-2";
+    }
+
+    if (player.preferredPositions.includes("HALF_BACK")) {
+      return "Half Back 3-2";
+    }
+
+    if (player.preferredPositions.includes("FORWARD")) {
+      return "Forward 1-1";
+    }
+  }
+
+  if (formation === "1-3-2") {
+    if (player.preferredPositions.includes("BACK")) {
+      return "Back 3-2";
+    }
+
+    if (player.preferredPositions.includes("WING")) {
+      return "Wing 3-2";
+    }
+
+    if (player.preferredPositions.includes("FORWARD")) {
+      return "Forward 1-1";
+    }
+  }
+
+  return player.preferredPositions[0] || "Flexible";
+}
+
+// ===============================
+// MASTER FUNCTION
+// ===============================
+
+export function assignTeamWithClusters(
+  players: Player[],
+  formation: "3-3" | "1-3-2"
+): AssignedPlayer[] {
+  const lockedCore = lockCorePlayers(players, formation);
+  return buildClusters(lockedCore, players, formation);
+}

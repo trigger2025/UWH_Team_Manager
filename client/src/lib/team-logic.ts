@@ -37,30 +37,62 @@ const EXTRA_SLOT_PRIORITY: Record<FormationType, string[]> = {
   "1-3-2": ["Back", "Wing", "Centre", "Forward"],
 };
 
-interface ClusterTemplate {
-  weight: number;
-  type?: string;
-  clusters?: { label: string; size: number }[];
+function findCorePlayerIds(
+  players: PlayerWithAssignedFormationRole[],
+  formation: FormationType
+): Set<number> {
+  const coreSlots: string[] = [];
+  for (const [pos, count] of Object.entries(BASE_SLOT_STRUCTURES[formation])) {
+    for (let i = 0; i < count; i++) coreSlots.push(pos);
+  }
+
+  const remaining = [...players];
+  const coreIds = new Set<number>();
+
+  for (const slot of coreSlots) {
+    let bestIdx = -1;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const pref = (remaining[i].formationPreferences as any)?.[formation];
+      const main = pref?.main as string | undefined;
+      const alts = (pref?.alternates as string[]) || [];
+      const score = main === slot ? 100 : alts.includes(slot) ? 40 : -1000;
+      if (score > bestScore) { bestScore = score; bestIdx = i; }
+    }
+
+    if (bestIdx !== -1) {
+      coreIds.add(remaining[bestIdx].id);
+      remaining.splice(bestIdx, 1);
+    }
+  }
+
+  return coreIds;
 }
 
-const CLUSTER_TEMPLATES: Record<FormationType, Record<number, ClusterTemplate[]>> = {
-  "3-3": {
-    6: [{ weight: 100, type: "core_only" }],
-    7: [{ weight: 100, clusters: [{ label: "super-sub", size: 1 }] }],
-    8: [{ weight: 100, clusters: [{ label: "Forward", size: 3 }, { label: "Back Line", size: 3 }] }],
-    9: [{ weight: 100, clusters: [{ label: "Forward", size: 3 }, { label: "Half Back", size: 3 }, { label: "Centre/Centre Back", size: 3 }] }],
-    10: [
-      { weight: 100, clusters: [{ label: "Forward 1-1", size: 2 }, { label: "Half Back 3-2", size: 3 }, { label: "Centre/Centre Back 3-2", size: 3 }] },
-      { weight: 60, clusters: [{ label: "Forward 1-1", size: 2 }, { label: "Centre 1-1", size: 2 }, { label: "Back 4-3", size: 4 }] },
-    ],
-  },
-  "1-3-2": {
-    6: [{ weight: 100, type: "core_only" }],
-    8: [{ weight: 100, clusters: [{ label: "Wing/Forward/Centre 4-3", size: 4 }, { label: "Back/Wing 4-3", size: 4 }] }],
-    9: [{ weight: 100, clusters: [{ label: "Back 3-2", size: 3 }, { label: "Wing/Forward 3-2", size: 3 }, { label: "Wing/Centre 3-2", size: 3 }] }],
-    10: [{ weight: 100, clusters: [{ label: "Back 3-2", size: 3 }, { label: "Wing/Centre 3-2", size: 3 }, { label: "Forward 1-1", size: 2 }, { label: "Wing 1-1", size: 2 }] }],
-  },
-};
+function deriveClusterLabel(
+  player: PlayerWithAssignedFormationRole,
+  formation: FormationType
+): string {
+  const pref = (player.formationPreferences as any)?.[formation];
+  const main = pref?.main as string | undefined;
+  const alts = (pref?.alternates as string[]) || [];
+  const all = [main, ...alts].filter(Boolean) as string[];
+
+  if (formation === "3-3") {
+    if (all.includes("Centre") && all.includes("Centre Back")) return "Centre/Centre Back 3-2";
+    if (all.includes("Half Back")) return "Half Back 3-2";
+    if (all.includes("Forward")) return "Forward 1-1";
+  }
+
+  if (formation === "1-3-2") {
+    if (all.includes("Back")) return "Back 3-2";
+    if (all.includes("Wing")) return "Wing 3-2";
+    if (all.includes("Forward")) return "Forward 1-1";
+  }
+
+  return main || "Flexible";
+}
 
 export function applyClusterLabels(
   players: PlayerWithAssignedFormationRole[],
@@ -69,28 +101,25 @@ export function applyClusterLabels(
   const size = players.length;
   if (size <= 6) return players.map(p => ({ ...p, clusterLabel: undefined }));
 
-  const formationTemplates = CLUSTER_TEMPLATES[formation];
-  const templates = formationTemplates[size] ?? formationTemplates[Math.min(size, 10)];
-  if (!templates || !templates.length) return players;
+  const coreIds = findCorePlayerIds(players, formation);
+  const extras = players.filter(p => !coreIds.has(p.id));
 
-  const chosen = [...templates].sort((a, b) => b.weight - a.weight)[0];
-  if (!chosen || !chosen.clusters || chosen.type === "core_only") {
-    return players.map(p => ({ ...p, clusterLabel: undefined }));
+  if (extras.length === 0) return players.map(p => ({ ...p, clusterLabel: undefined }));
+
+  if (extras.length === 1) {
+    const extraId = extras[0].id;
+    return players.map(p => ({ ...p, clusterLabel: p.id === extraId ? "super-sub" : undefined }));
   }
 
-  const sorted = [...players].sort((a, b) => b.ratingUsed - a.ratingUsed);
-  const labelMap = new Map<number, string>();
-  let idx = 0;
-  for (const cluster of chosen.clusters) {
-    for (let i = 0; i < cluster.size; i++) {
-      if (sorted[idx]) {
-        labelMap.set(sorted[idx].id, cluster.label);
-        idx++;
-      }
-    }
+  const clusterMap = new Map<number, string>();
+  for (const extra of extras) {
+    clusterMap.set(extra.id, deriveClusterLabel(extra, formation));
   }
 
-  return players.map(p => ({ ...p, clusterLabel: labelMap.get(p.id) }));
+  return players.map(p => ({
+    ...p,
+    clusterLabel: coreIds.has(p.id) ? undefined : clusterMap.get(p.id),
+  }));
 }
 
 export function getPositionBonusSettings(adminSettings: AdminSettings[]): { mainPositionBonus: number; alternatePositionBonus: number } {

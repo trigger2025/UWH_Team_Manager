@@ -79,6 +79,16 @@ Preferred communication style: Simple, everyday language.
 - **Assignment Order**: Players sorted by ratingUsed descending; cluster labels assigned from highest-rated first within each cluster group
 - **Applied**: On generation and on every manual move (between teams or pools)
 
+## Core Lock Engine (Cluster Assignment — Pass 12)
+- **Core 6 locked first**: `findCorePlayerIds` uses greedy preference-matching (main=100, alternate=40, no match=-1000) to assign the 6 base formation slots to the best-matched players
+- **Extras get cluster labels**: Players beyond the core 6 are identified as "extras" and get `clusterLabel` instead of showing regular positions
+- **Super-sub (1 extra)**: When exactly 1 extra player exists (7-player team), they are labeled "super-sub" (amber badge)
+- **Multiple extras**: `deriveClusterLabel` assigns labels based on player formation preferences:
+  - 3-3: Centre+CentreBack → "Centre/Centre Back 3-2"; HalfBack → "Half Back 3-2"; Forward → "Forward 1-1"; else main position or "Flexible"
+  - 1-3-2: Back → "Back 3-2"; Wing → "Wing 3-2"; Forward → "Forward 1-1"; else main position or "Flexible"
+- **Core players**: Show their regular assigned position badge (no cluster label)
+- **Applied**: On generation and on every manual move (between teams or pools)
+
 ## Visibility Settings
 - **Settings Storage**: Stored in context as `visibilitySettings: { showRatings: boolean, showPositions: boolean }`
 - **Default Values**: Both `showRatings` and `showPositions` default to `true`
