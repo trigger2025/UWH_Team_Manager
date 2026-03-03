@@ -129,57 +129,49 @@ export default function TournamentPage() {
   const progressPct = totalFixtures > 0 ? Math.round((completedCount / totalFixtures) * 100) : 0;
   const standings = getStandings(teams, fixtures);
 
+  // 3 teams must always use 1 pool (each round only has 1 real game)
+  const forceSinglePool = teams.length === 3;
+  const activePools: 1 | 2 = forceSinglePool ? 1 : schedulePools;
+
   function generateSchedule() {
     const rounds = buildScheduleRounds(teams);
     const slotLen = scheduleDuration + scheduleTurnover;
-    // Pool balance counters: track A/B play count per team
-    const poolCounts: Record<string, { A: number; B: number }> = {};
-    teams.forEach(t => { poolCounts[t.id] = { A: 0, B: 0 }; });
-
     let t = parseTime(scheduleStartTime);
     const slots: ScheduleSlot[] = [];
 
-    if (schedulePools === 1) {
-      // Each game is its own time slot; BYE noted in the round's first slot
+    if (activePools === 1) {
+      // Each game is its own time slot; Bye = all non-playing teams that slot
       rounds.forEach(round => {
-        round.games.forEach((game, gi) => {
+        round.games.forEach(game => {
+          const playing = new Set([game.teamA.id, game.teamB.id]);
+          const byeNames = teams.filter(tm => !playing.has(tm.id)).map(tm => tm.label);
           slots.push({
             time: formatTime(t),
             poolA: `${game.teamA.label} vs ${game.teamB.label}`,
             poolB: "–",
-            bye: gi === 0 && round.bye ? round.bye.label : "–",
+            bye: byeNames.join(", ") || "–",
           });
           t += slotLen;
         });
       });
     } else {
-      // Each ROUND is one time slot; balance games across Pool A and Pool B
+      // Each ROUND is one time slot; first game → Pool A, second game → Pool B
       rounds.forEach(round => {
-        let poolA = "";
-        let poolB = "";
+        const poolA = round.games[0]
+          ? `${round.games[0].teamA.label} vs ${round.games[0].teamB.label}`
+          : "–";
+        const poolB = round.games[1]
+          ? `${round.games[1].teamA.label} vs ${round.games[1].teamB.label}`
+          : "–";
 
-        round.games.forEach(game => {
-          if (poolB) return; // already filled both pools
-          const aCount = (poolCounts[game.teamA.id]?.A ?? 0) + (poolCounts[game.teamB.id]?.A ?? 0);
-          const bCount = (poolCounts[game.teamA.id]?.B ?? 0) + (poolCounts[game.teamB.id]?.B ?? 0);
-          const assignToA = !poolA && aCount <= bCount;
-
-          if (assignToA) {
-            poolA = `${game.teamA.label} vs ${game.teamB.label}`;
-            poolCounts[game.teamA.id].A++;
-            poolCounts[game.teamB.id].A++;
-          } else if (!poolB) {
-            poolB = `${game.teamA.label} vs ${game.teamB.label}`;
-            poolCounts[game.teamA.id].B++;
-            poolCounts[game.teamB.id].B++;
-          }
-        });
+        // The round-robin rotation already computes which team has a bye each round
+        const byeLabel = round.bye ? round.bye.label : "–";
 
         slots.push({
           time: formatTime(t),
-          poolA: poolA || "–",
-          poolB: poolB || "–",
-          bye: round.bye ? round.bye.label : "–",
+          poolA,
+          poolB,
+          bye: byeLabel,
         });
         t += slotLen;
       });
@@ -355,9 +347,10 @@ export default function TournamentPage() {
                       <Button
                         key={n}
                         size="sm"
-                        variant={schedulePools === n ? "default" : "outline"}
+                        variant={activePools === n ? "default" : "outline"}
                         className="flex-1 h-8 text-xs"
                         onClick={() => { setSchedulePools(n); setGeneratedSchedule(null); }}
+                        disabled={forceSinglePool && n === 2}
                         data-testid={`button-schedule-pools-${n}`}
                       >
                         {n === 1 ? "1 Pool" : "2 Pools"}
@@ -398,10 +391,10 @@ export default function TournamentPage() {
                 <>
                   <div ref={scheduleRef} className="rounded border border-border/40 overflow-hidden text-[10px]">
                     {/* Header */}
-                    <div className={`grid bg-muted/30 border-b border-border/40 ${schedulePools === 2 ? "grid-cols-[48px_1fr_1fr_56px]" : "grid-cols-[48px_1fr_56px]"}`}>
+                    <div className={`grid bg-muted/30 border-b border-border/40 ${activePools === 2 ? "grid-cols-[48px_1fr_1fr_56px]" : "grid-cols-[48px_1fr_56px]"}`}>
                       <span className="px-2 py-1.5 font-bold text-muted-foreground uppercase tracking-wide">Time</span>
                       <span className="px-2 py-1.5 font-bold text-amber-400 uppercase tracking-wide">Pool A</span>
-                      {schedulePools === 2 && (
+                      {activePools === 2 && (
                         <span className="px-2 py-1.5 font-bold text-violet-400 uppercase tracking-wide">Pool B</span>
                       )}
                       <span className="px-2 py-1.5 font-bold text-muted-foreground/60 uppercase tracking-wide">Bye</span>
@@ -410,16 +403,16 @@ export default function TournamentPage() {
                     {generatedSchedule.map((slot, i) => (
                       <div
                         key={i}
-                        className={`grid border-b border-border/20 last:border-0 ${schedulePools === 2 ? "grid-cols-[48px_1fr_1fr_56px]" : "grid-cols-[48px_1fr_56px]"} ${i % 2 === 0 ? "" : "bg-muted/10"}`}
+                        className={`grid border-b border-border/20 last:border-0 ${activePools === 2 ? "grid-cols-[48px_1fr_1fr_56px]" : "grid-cols-[48px_1fr_56px]"} ${i % 2 === 0 ? "" : "bg-muted/10"}`}
                         data-testid={`row-schedule-${i}`}
                       >
-                        <span className="px-2 py-2 font-mono text-muted-foreground">{slot.time}</span>
-                        <span className="px-2 py-2 text-foreground leading-tight">{slot.poolA}</span>
-                        {schedulePools === 2 && (
-                          <span className="px-2 py-2 text-foreground leading-tight">{slot.poolB}</span>
+                        <span className="px-2 py-2 font-mono text-muted-foreground" data-testid={`text-schedule-time-${i}`}>{slot.time}</span>
+                        <span className="px-2 py-2 text-foreground leading-tight" data-testid={`text-schedule-poolA-${i}`}>{slot.poolA}</span>
+                        {activePools === 2 && (
+                          <span className="px-2 py-2 text-foreground leading-tight" data-testid={`text-schedule-poolB-${i}`}>{slot.poolB}</span>
                         )}
-                        <span className="px-2 py-2 text-muted-foreground/60 leading-tight truncate">
-                          {slot.bye !== "–" ? slot.bye : ""}
+                        <span className="px-2 py-2 text-muted-foreground/60 leading-tight truncate" data-testid={`text-schedule-bye-${i}`}>
+                          {slot.bye && slot.bye !== "–" ? slot.bye : "–"}
                         </span>
                       </div>
                     ))}

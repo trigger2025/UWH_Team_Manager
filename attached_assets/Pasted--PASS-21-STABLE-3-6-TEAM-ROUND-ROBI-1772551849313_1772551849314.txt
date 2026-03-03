@@ -1,0 +1,216 @@
+/* =========================================================
+   PASS 21 – STABLE 3–6 TEAM ROUND ROBIN ENGINE
+   - Works for 3–6 teams only
+   - No duplicate matches
+   - No team plays twice in same time slot
+   - Balanced 2-pool distribution when possible
+   - 3 teams forced to 1 pool
+   - Full persistence of schedule + options
+   ========================================================= */
+
+function generateRoundRobinPairs(teams) {
+  const list = [...teams];
+  const isOdd = list.length % 2 !== 0;
+
+  if (isOdd) list.push(null);
+
+  const rounds = [];
+  const n = list.length;
+
+  for (let round = 0; round < n - 1; round++) {
+    const matches = [];
+
+    for (let i = 0; i < n / 2; i++) {
+      const home = list[i];
+      const away = list[n - 1 - i];
+
+      if (home && away) {
+        matches.push({ home, away });
+      }
+    }
+
+    rounds.push(matches);
+
+    // rotate
+    list.splice(1, 0, list.pop());
+  }
+
+  return rounds;
+}
+
+function generateTournamentSchedule({
+  teams,
+  startTime,
+  gameMinutes,
+  turnoverMinutes,
+  poolMode
+}) {
+  if (teams.length < 3 || teams.length > 6) {
+    alert("Tournament supports 3–6 teams only.");
+    return null;
+  }
+
+  // Force 1 pool for 3 teams
+  if (teams.length === 3) {
+    poolMode = 1;
+  }
+
+  const rounds = generateRoundRobinPairs(teams);
+  const schedule = [];
+  const poolCounts = {};
+
+  teams.forEach(t => {
+    poolCounts[t.id] = { A: 0, B: 0 };
+  });
+
+  let currentTime = convertToMinutes(startTime);
+
+  for (let r = 0; r < rounds.length; r++) {
+    const roundMatches = rounds[r];
+
+    let poolA = null;
+    let poolB = null;
+    let byeTeams = [];
+
+    if (poolMode === 1) {
+      poolA = roundMatches[0] || null;
+
+      if (roundMatches.length === 0) {
+        byeTeams = teams;
+      } else {
+        const playing = [
+          roundMatches[0].home.id,
+          roundMatches[0].away.id
+        ];
+        byeTeams = teams.filter(t => !playing.includes(t.id));
+      }
+    } else {
+      // 2 pool balancing logic
+      if (roundMatches.length === 1) {
+        poolA = roundMatches[0];
+        poolCounts[poolA.home.id].A++;
+        poolCounts[poolA.away.id].A++;
+
+        const playing = [
+          poolA.home.id,
+          poolA.away.id
+        ];
+        byeTeams = teams.filter(t => !playing.includes(t.id));
+      }
+
+      if (roundMatches.length === 2) {
+        const m1 = roundMatches[0];
+        const m2 = roundMatches[1];
+
+        const imbalance =
+          poolCounts[m1.home.id].A +
+          poolCounts[m1.away.id].A;
+
+        if (imbalance <=
+            poolCounts[m2.home.id].A +
+            poolCounts[m2.away.id].A) {
+          poolA = m1;
+          poolB = m2;
+        } else {
+          poolA = m2;
+          poolB = m1;
+        }
+
+        poolCounts[poolA.home.id].A++;
+        poolCounts[poolA.away.id].A++;
+        poolCounts[poolB.home.id].B++;
+        poolCounts[poolB.away.id].B++;
+
+        const playing = [
+          poolA.home.id,
+          poolA.away.id,
+          poolB.home.id,
+          poolB.away.id
+        ];
+        byeTeams = teams.filter(t => !playing.includes(t.id));
+      }
+    }
+
+    schedule.push({
+      time: convertToTime(currentTime),
+      poolA,
+      poolB,
+      bye: byeTeams
+    });
+
+    currentTime += gameMinutes + turnoverMinutes;
+  }
+
+  localStorage.setItem(
+    "tournamentSchedule",
+    JSON.stringify(schedule)
+  );
+
+  localStorage.setItem(
+    "tournamentScheduleOptions",
+    JSON.stringify({
+      startTime,
+      gameMinutes,
+      turnoverMinutes,
+      poolMode
+    })
+  );
+
+  return schedule;
+}
+
+/* =========================
+   Helpers
+   ========================= */
+
+function convertToMinutes(timeStr) {
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function convertToTime(totalMinutes) {
+  const h = Math.floor(totalMinutes / 60)
+    .toString()
+    .padStart(2, "0");
+
+  const m = (totalMinutes % 60)
+    .toString()
+    .padStart(2, "0");
+
+  return `${h}:${m}`;
+}
+
+/* =========================
+   Lock Pool Toggle After Generation
+   ========================= */
+
+function restoreTournamentSchedule() {
+  const saved = localStorage.getItem("tournamentSchedule");
+  const options = localStorage.getItem("tournamentScheduleOptions");
+
+  if (!saved) return null;
+
+  const schedule = JSON.parse(saved);
+
+  if (options) {
+    const parsed = JSON.parse(options);
+    setTournamentOptions(parsed);
+    lockPoolSelection(true);
+  }
+
+  return schedule;
+}
+
+function lockPoolSelection(locked) {
+  const buttons = document.querySelectorAll(".pool-toggle");
+
+  buttons.forEach(btn => {
+    btn.disabled = locked;
+  });
+}
+
+function resetTournament() {
+  localStorage.removeItem("tournamentSchedule");
+  localStorage.removeItem("tournamentScheduleOptions");
+  lockPoolSelection(false);
+}
