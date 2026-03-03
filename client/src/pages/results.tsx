@@ -23,7 +23,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Match, Player, GeneratedTeam, TournamentHistoryEntry, TournamentFixture } from "@shared/schema";
+import { Match, Player, GeneratedTeam, TournamentHistoryEntry, TournamentFixture, PlayerSnapshot } from "@shared/schema";
 import { createMatchTeamSnapshot } from "@/lib/team-logic";
 import { useLocation } from "wouter";
 
@@ -422,8 +422,30 @@ export default function ResultsPage() {
 }
 
 function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
-  const { deleteTournamentHistory } = useApp();
+  const { deleteTournamentHistory, visibilitySettings } = useApp();
+  const { showRatings = true } = visibilitySettings || {};
   const [isOpen, setIsOpen] = useState(false);
+  const [expandedFixtures, setExpandedFixtures] = useState<Record<number, boolean>>({});
+
+  function toggleFixture(id: number) {
+    setExpandedFixtures(prev => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  function getSnap(playerId: number): PlayerSnapshot | undefined {
+    return (entry.playerSnapshots || []).find((s: PlayerSnapshot) => s.playerId === playerId);
+  }
+
+  function RatingDelta({ before, after }: { before: number; after?: number }) {
+    if (after === undefined) return <span className="font-mono text-muted-foreground">{before}</span>;
+    const delta = after - before;
+    const color = delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground";
+    const sign = delta > 0 ? "+" : "";
+    return (
+      <span className={`font-mono ${color}`}>
+        {before}→{after} <span className="text-[9px]">({sign}{delta})</span>
+      </span>
+    );
+  }
 
   const standings = entry.teams.map(team => {
     let wins = 0, draws = 0, losses = 0, points = 0;
@@ -509,15 +531,41 @@ function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
             </div>
             <div className="space-y-1">
               {entry.fixtures.map((f: TournamentFixture, idx: number) => (
-                <div key={f.id} className="flex items-center gap-2 text-[10px] text-muted-foreground py-0.5">
-                  <span className="w-4 text-center text-muted-foreground/50">{idx + 1}</span>
-                  <span className={`flex-1 truncate ${f.result === "A" ? "text-foreground font-medium" : ""}`}>{f.teamA.label}</span>
-                  <span className="font-mono">
-                    {f.result === "A" ? "Win" : f.result === "draw" ? "Draw" : "Loss"}
-                    {" / "}
-                    {f.result === "B" ? "Win" : f.result === "draw" ? "Draw" : "Loss"}
-                  </span>
-                  <span className={`flex-1 truncate text-right ${f.result === "B" ? "text-foreground font-medium" : ""}`}>{f.teamB.label}</span>
+                <div key={f.id} className="rounded border border-border/20 overflow-hidden">
+                  <button
+                    className="w-full flex items-center gap-2 text-[10px] text-muted-foreground py-1 px-2 hover:bg-muted/30 transition-colors"
+                    onClick={() => toggleFixture(f.id)}
+                  >
+                    <span className="w-4 text-center text-muted-foreground/50 shrink-0">{idx + 1}</span>
+                    <span className={`flex-1 truncate text-left ${f.result === "A" ? "text-foreground font-medium" : ""}`}>{f.teamA.label}</span>
+                    <span className="font-mono shrink-0">
+                      {f.result === "A" ? "W/L" : f.result === "draw" ? "D/D" : f.result === "B" ? "L/W" : "–"}
+                    </span>
+                    <span className={`flex-1 truncate text-right ${f.result === "B" ? "text-foreground font-medium" : ""}`}>{f.teamB.label}</span>
+                    {expandedFixtures[f.id] ? <ChevronUp className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
+                  </button>
+                  {expandedFixtures[f.id] && (
+                    <div className="grid grid-cols-2 gap-2 px-2 pb-2 pt-1 bg-muted/10 border-t border-border/20">
+                      {[{ team: f.teamA, won: f.result === "A" }, { team: f.teamB, won: f.result === "B" }].map(({ team, won }) => (
+                        <div key={team.id} className="space-y-1">
+                          <div className={`text-[9px] font-bold uppercase tracking-wider ${won ? "text-amber-400" : "text-muted-foreground"}`}>
+                            {team.label} {won ? "🏆" : ""}
+                          </div>
+                          {team.players.map(p => {
+                            const snap = getSnap(p.id);
+                            return (
+                              <div key={p.id} className="text-[9px] text-muted-foreground leading-tight">
+                                <div className="truncate">{p.name}</div>
+                                {showRatings && snap && (
+                                  <RatingDelta before={snap.ratingBefore} after={snap.ratingAfter} />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -573,6 +621,11 @@ function MatchCard({
               <div className="text-3xl font-display font-black">
                 {match.completed ? match.blackScore : '-'}
               </div>
+              {showRatings && teams?.black?.players?.length > 0 && (
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  Avg {Math.round(teams.black.players.reduce((s: number, p: any) => s + (p.ratingUsed ?? p.rating ?? 0), 0) / teams.black.players.length)}
+                </div>
+              )}
             </div>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="sm" className="px-3 py-1 rounded-full bg-muted text-[10px] font-bold text-muted-foreground hover:bg-muted/80">
@@ -584,6 +637,11 @@ function MatchCard({
               <div className="text-3xl font-display font-black">
                 {match.completed ? match.whiteScore : '-'}
               </div>
+              {showRatings && teams?.white?.players?.length > 0 && (
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  Avg {Math.round(teams.white.players.reduce((s: number, p: any) => s + (p.ratingUsed ?? p.rating ?? 0), 0) / teams.white.players.length)}
+                </div>
+              )}
             </div>
           </div>
 

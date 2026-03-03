@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useApp } from "@/context/AppContext";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trophy, Swords, CheckCircle2, ChevronLeft, RotateCcw } from "lucide-react";
+import { Trophy, Swords, CheckCircle2, ChevronLeft, RotateCcw, CalendarClock } from "lucide-react";
 import { useLocation } from "wouter";
 import { TournamentFixture, TournamentTeam } from "@shared/schema";
 import { motion } from "framer-motion";
@@ -29,10 +30,33 @@ function getStandings(teams: TournamentTeam[], fixtures: TournamentFixture[]) {
   return Object.values(standings).sort((a, b) => b.points - a.points || b.wins - a.wins);
 }
 
+interface ScheduleSlot {
+  time: string;
+  poolA: string;
+  poolB: string;
+}
+
+function parseTime(str: string): number {
+  const [h, m] = str.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function formatTime(mins: number): string {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 export default function TournamentPage() {
   const { generationWorkspace, setTournamentFixtureResult, finaliseTournament, resetTournament } = useApp();
   const [, navigate] = useLocation();
   const tournament = generationWorkspace.tournament;
+
+  const [scheduleStartTime, setScheduleStartTime] = useState("18:00");
+  const [scheduleDuration, setScheduleDuration] = useState(12);
+  const [scheduleTurnover, setScheduleTurnover] = useState(3);
+  const [schedulePools, setSchedulePools] = useState<1 | 2>(1);
+  const [generatedSchedule, setGeneratedSchedule] = useState<ScheduleSlot[] | null>(null);
 
   if (!tournament || !tournament.active) {
     return (
@@ -53,6 +77,30 @@ export default function TournamentPage() {
   const allDone = completedCount === totalFixtures;
   const progressPct = totalFixtures > 0 ? Math.round((completedCount / totalFixtures) * 100) : 0;
   const standings = getStandings(teams, fixtures);
+
+  function generateSchedule() {
+    let t = parseTime(scheduleStartTime);
+    const slotLen = scheduleDuration + scheduleTurnover;
+    const slots: ScheduleSlot[] = [];
+    if (schedulePools === 1) {
+      fixtures.forEach(f => {
+        slots.push({ time: formatTime(t), poolA: `${f.teamA.label} vs ${f.teamB.label}`, poolB: "–" });
+        t += slotLen;
+      });
+    } else {
+      for (let i = 0; i < fixtures.length; i += 2) {
+        const a = fixtures[i];
+        const b = fixtures[i + 1];
+        slots.push({
+          time: formatTime(t),
+          poolA: a ? `${a.teamA.label} vs ${a.teamB.label}` : "–",
+          poolB: b ? `${b.teamA.label} vs ${b.teamB.label}` : "–",
+        });
+        t += slotLen;
+      }
+    }
+    setGeneratedSchedule(slots);
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -177,6 +225,99 @@ export default function TournamentPage() {
             </AlertDialogContent>
           </AlertDialog>
         )}
+
+        {/* Schedule Generator */}
+        <div className="space-y-3">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1 flex items-center gap-1.5">
+            <CalendarClock className="h-3.5 w-3.5" />
+            Schedule
+          </h2>
+          <Card className="border-border/50">
+            <CardContent className="px-4 py-3 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Start Time</label>
+                  <input
+                    type="time"
+                    value={scheduleStartTime}
+                    onChange={e => { setScheduleStartTime(e.target.value); setGeneratedSchedule(null); }}
+                    className="w-full h-8 rounded border border-border bg-background px-2 text-sm text-foreground"
+                    data-testid="input-schedule-start-time"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Concurrent</label>
+                  <div className="flex gap-1 h-8">
+                    {([1, 2] as const).map(n => (
+                      <Button
+                        key={n}
+                        size="sm"
+                        variant={schedulePools === n ? "default" : "outline"}
+                        className="flex-1 h-8 text-xs"
+                        onClick={() => { setSchedulePools(n); setGeneratedSchedule(null); }}
+                        data-testid={`button-schedule-pools-${n}`}
+                      >
+                        {n === 1 ? "1 Pool" : "2 Pools"}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Game (min)</label>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => { setScheduleDuration(d => Math.max(1, d - 1)); setGeneratedSchedule(null); }}>−</Button>
+                    <span className="flex-1 text-center text-sm font-mono font-bold">{scheduleDuration}</span>
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => { setScheduleDuration(d => d + 1); setGeneratedSchedule(null); }}>+</Button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Turnover (min)</label>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => { setScheduleTurnover(t => Math.max(0, t - 1)); setGeneratedSchedule(null); }}>−</Button>
+                    <span className="flex-1 text-center text-sm font-mono font-bold">{scheduleTurnover}</span>
+                    <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => { setScheduleTurnover(t => t + 1); setGeneratedSchedule(null); }}>+</Button>
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-2"
+                onClick={generateSchedule}
+                data-testid="button-generate-schedule"
+              >
+                <CalendarClock className="h-3.5 w-3.5" />
+                Generate Schedule
+              </Button>
+              {generatedSchedule && (
+                <div className="rounded border border-border/40 overflow-hidden text-[10px]">
+                  <div className="grid grid-cols-[52px_1fr_1fr] bg-muted/30 border-b border-border/40">
+                    <span className="px-2 py-1.5 font-bold text-muted-foreground uppercase tracking-wide">Time</span>
+                    <span className="px-2 py-1.5 font-bold text-amber-400 uppercase tracking-wide">Pool A</span>
+                    {schedulePools === 2 && (
+                      <span className="px-2 py-1.5 font-bold text-violet-400 uppercase tracking-wide">Pool B</span>
+                    )}
+                  </div>
+                  {generatedSchedule.map((slot, i) => (
+                    <div
+                      key={i}
+                      className={`grid grid-cols-[52px_1fr_1fr] border-b border-border/20 last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}
+                      data-testid={`row-schedule-${i}`}
+                    >
+                      <span className="px-2 py-2 font-mono text-muted-foreground">{slot.time}</span>
+                      <span className="px-2 py-2 text-foreground leading-tight">{slot.poolA}</span>
+                      {schedulePools === 2 && (
+                        <span className="px-2 py-2 text-foreground leading-tight">{slot.poolB}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
       <BottomNav />
     </div>

@@ -1,0 +1,229 @@
+/* =========================================================
+   PASS 18
+   - Completed Tournament Detail Expansion
+   - Schedule Tab (Time-based, 1 or 2 pools, simultaneous)
+   - Avg Rating Display on Normal Matches
+========================================================= */
+
+
+/* =========================================================
+   1️⃣ STORE AVERAGE RATING ON NORMAL GENERATE CONFIRM
+========================================================= */
+
+function calculateTeamAverage(team) {
+  if (!team || team.length === 0) return 0;
+  const total = team.reduce((sum, p) => sum + (p.rating || 0), 0);
+  return Number((total / team.length).toFixed(2));
+}
+
+// When confirming normal matches (NOT tournament mode)
+function attachAverageRatings(match) {
+  match.teamAAvg = calculateTeamAverage(match.teamA.players);
+  match.teamBAvg = calculateTeamAverage(match.teamB.players);
+  return match;
+}
+
+// In normal match panel render:
+function renderNormalMatchPanel(match) {
+  return `
+    <div class="match-panel">
+      <h3>${match.teamA.name} (${match.teamAAvg})
+          vs
+          ${match.teamB.name} (${match.teamBAvg})
+      </h3>
+      <!-- existing UI -->
+    </div>
+  `;
+}
+
+
+/* =========================================================
+   2️⃣ COMPLETED TOURNAMENT DETAIL VIEW
+========================================================= */
+
+function renderCompletedTournament(tournament) {
+  return `
+    <div class="tournament-summary">
+      <h2>${tournament.name}</h2>
+      <p>Matches Played: ${tournament.matches.length}</p>
+      <div class="tournament-matches">
+        ${tournament.matches.map(m => renderTournamentMatchRow(m)).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderTournamentMatchRow(match) {
+  return `
+    <div class="tournament-match-row">
+      <span>${match.teamAName} vs ${match.teamBName}</span>
+      <button onclick="toggleTournamentTeamDetail('${match.id}')">
+        View Teams
+      </button>
+      <div id="detail-${match.id}" class="hidden"></div>
+    </div>
+  `;
+}
+
+function toggleTournamentTeamDetail(matchId) {
+  const container = document.getElementById(`detail-${matchId}`);
+  if (!container) return;
+
+  if (container.innerHTML !== "") {
+    container.innerHTML = "";
+    return;
+  }
+
+  const tournament = getTournamentByMatchId(matchId);
+  const match = tournament.matches.find(m => m.id === matchId);
+
+  container.innerHTML = `
+    <div class="team-detail">
+      ${renderTournamentTeamDetail(match.teamA)}
+      ${renderTournamentTeamDetail(match.teamB)}
+    </div>
+  `;
+}
+
+function renderTournamentTeamDetail(team) {
+  return `
+    <div class="team-detail-block">
+      <h4>${team.name}</h4>
+      <p>Average at Generation: ${team.avgRating}</p>
+      ${team.players.map(p => `
+        <div class="player-line">
+          ${p.name}
+          ${renderRatingChange(p.startRating, p.endRating)}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+// identical rating change logic as normal mode
+function renderRatingChange(start, end) {
+  const diff = Number((end - start).toFixed(2));
+  const className = diff > 0 ? "rating-up" :
+                    diff < 0 ? "rating-down" :
+                    "rating-neutral";
+
+  const sign = diff > 0 ? "+" : "";
+  return `<span class="${className}">
+            ${start.toFixed(2)} → ${end.toFixed(2)} (${sign}${diff})
+          </span>`;
+}
+
+
+/* =========================================================
+   3️⃣ SCHEDULE TAB (Simultaneous Pools)
+========================================================= */
+
+let activeSchedule = null;
+
+function generateSchedule(teams, options) {
+  // options:
+  // { pools: 1 or 2, startTime: "18:00", gameDuration: 12, turnover: 3 }
+
+  const fixtures = generateRoundRobin(teams);
+  const schedule = [];
+
+  let currentTime = parseTime(options.startTime);
+
+  if (options.pools === 1) {
+    fixtures.forEach(f => {
+      schedule.push({
+        time: formatTime(currentTime),
+        poolA: `${f.teamA} vs ${f.teamB}`,
+        poolB: null
+      });
+      currentTime += (options.gameDuration + options.turnover);
+    });
+  }
+
+  if (options.pools === 2) {
+    for (let i = 0; i < fixtures.length; i += 2) {
+      schedule.push({
+        time: formatTime(currentTime),
+        poolA: fixtures[i]
+          ? `${fixtures[i].teamA} vs ${fixtures[i].teamB}`
+          : "",
+        poolB: fixtures[i + 1]
+          ? `${fixtures[i + 1].teamA} vs ${fixtures[i + 1].teamB}`
+          : ""
+      });
+      currentTime += (options.gameDuration + options.turnover);
+    }
+  }
+
+  activeSchedule = schedule;
+  return schedule;
+}
+
+
+// Standard round robin generator
+function generateRoundRobin(teams) {
+  const list = [...teams];
+  const fixtures = [];
+
+  if (list.length % 2 !== 0) list.push({ name: "BYE" });
+
+  const n = list.length;
+
+  for (let round = 0; round < n - 1; round++) {
+    for (let i = 0; i < n / 2; i++) {
+      const teamA = list[i];
+      const teamB = list[n - 1 - i];
+      if (teamA.name !== "BYE" && teamB.name !== "BYE") {
+        fixtures.push({
+          teamA: teamA.name,
+          teamB: teamB.name
+        });
+      }
+    }
+    list.splice(1, 0, list.pop());
+  }
+
+  return fixtures;
+}
+
+
+/* =========================================================
+   4️⃣ TIME HELPERS
+========================================================= */
+
+function parseTime(str) {
+  const [h, m] = str.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function formatTime(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h.toString().padStart(2,"0")}:${m.toString().padStart(2,"0")}`;
+}
+
+
+/* =========================================================
+   5️⃣ SCHEDULE RENDER
+========================================================= */
+
+function renderSchedule() {
+  if (!activeSchedule) return "<p>No schedule generated.</p>";
+
+  return `
+    <div class="schedule-table">
+      <div class="schedule-header">
+        <span>Time</span>
+        <span>Pool A</span>
+        <span>Pool B</span>
+      </div>
+      ${activeSchedule.map(slot => `
+        <div class="schedule-row">
+          <span>${slot.time}</span>
+          <span>${slot.poolA || "-"}</span>
+          <span>${slot.poolB || "-"}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}

@@ -199,6 +199,8 @@ export interface PlayerSnapshot {
   playerId: number;
   ratingBefore: number;
   weakHandRatingBefore?: number;
+  ratingAfter?: number;
+  weakHandRatingAfter?: number;
 }
 
 export interface TournamentState {

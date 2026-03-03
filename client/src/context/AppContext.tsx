@@ -930,12 +930,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       });
 
+      // Enrich snapshots with ratingAfter from post-finalise player state
+      const snapshotsWithAfter = (t.playerSnapshots || []).map((snap: PlayerSnapshot) => {
+        const updated = updatedPlayers.find(p => p.id === snap.playerId);
+        if (!updated) return snap;
+        return {
+          ...snap,
+          ratingAfter: updated.rating,
+          weakHandRatingAfter: updated.weakHandEnabled && updated.weakHandRating !== null ? updated.weakHandRating : undefined,
+        };
+      });
+
       const historyEntry: TournamentHistoryEntry = {
         id: Date.now(),
         date: new Date().toISOString(),
         teams: t.teams,
         fixtures: t.fixtures,
-        playerSnapshots: t.playerSnapshots || [],
+        playerSnapshots: snapshotsWithAfter,
       };
 
       return {

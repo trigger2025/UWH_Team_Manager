@@ -64,7 +64,9 @@ Preferred communication style: Simple, everyday language.
 - **Reset**: Clears tournament state from workspace; rating changes applied before finalisation are not reversed
 - **Rating Impact**: Win = +pts, Loss = -pts, Draw = proportional; uses same `calculateRatingAdjustments` as standard matches but with `tournamentMode: true`
 - **History**: On finalise, tournament is saved to `tournamentHistory[]` (separate `uwh_tournament_history` localStorage key) and the active tournament is cleared; navigates to /results
-- **Results Page Integration**: Completed Tournaments section appears at the bottom of Session History when history exists; each entry is a collapsible card showing date, team count, fixture count, winner badge, final standings (points), and all fixture outcomes
+- **Results Page Integration**: Completed Tournaments section appears at the bottom of Session History when history exists; each entry is a collapsible card showing date, team count, fixture count, winner badge, final standings (points), and all fixture outcomes. Each fixture row is expandable to reveal per-team player lists with `ratingBefore→ratingAfter (+delta)` rating change display
+- **Schedule Generator**: On the /tournament page, a Schedule section lets organisers set start time, game duration (minutes), turnover time (minutes), and 1 or 2 concurrent pools. Generates a time-based table showing which fixture plays when. In 2-pool mode, fixtures are paired side-by-side per time slot
+- **Avg Rating on Match Cards**: Normal (non-tournament) match cards in /results show "Avg NNN" below the Black and White score labels when showRatings is enabled; computed from player ratingUsed values at generation time
 
 ## Two Pools Mode
 - **Pool Assignment**: Each selected player must be assigned to Pool A or Pool B before generation
