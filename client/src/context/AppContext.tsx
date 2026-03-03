@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams, TeamTemplate, TeamTemplateStructure, PlayerWithAssignedFormationRole, TournamentTeam, TournamentFixture, TournamentState } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams, TeamTemplate, TeamTemplateStructure, PlayerWithAssignedFormationRole, TournamentTeam, TournamentFixture, TournamentState, TournamentHistoryEntry } from "@shared/schema";
 import { storage, AppData, DEFAULT_GENERATION_WORKSPACE, DEFAULT_VISIBILITY_SETTINGS } from "@/lib/storage";
 import { calculateRatingAdjustments, applyRatingAdjustments } from "@/lib/rating-logic";
 import { generateRoundRobin } from "@/lib/team-logic";
@@ -51,6 +51,7 @@ interface AppState extends AppData {
   setTournamentFixtureResult: (fixtureId: number, result: "A" | "B" | "draw") => void;
   finaliseTournament: () => void;
   resetTournament: () => void;
+  tournamentHistory: TournamentHistoryEntry[];
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -907,12 +908,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       });
 
+      const historyEntry: TournamentHistoryEntry = {
+        id: Date.now(),
+        date: new Date().toISOString(),
+        teams: t.teams,
+        fixtures: t.fixtures,
+      };
+
       return {
         ...prev,
         players: updatedPlayers,
+        tournamentHistory: [historyEntry, ...(prev.tournamentHistory || [])],
         generationWorkspace: {
           ...prev.generationWorkspace,
-          tournament: { ...t, finalised: true },
+          tournament: null,
         }
       };
     });
@@ -961,7 +970,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       confirmTournament,
       setTournamentFixtureResult,
       finaliseTournament,
-      resetTournament
+      resetTournament,
+      tournamentHistory: state.tournamentHistory || [],
     }}>
       {children}
     </AppContext.Provider>

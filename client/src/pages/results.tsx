@@ -23,7 +23,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Match, Player, GeneratedTeam } from "@shared/schema";
+import { Match, Player, GeneratedTeam, TournamentHistoryEntry, TournamentFixture } from "@shared/schema";
 import { createMatchTeamSnapshot } from "@/lib/team-logic";
 import { useLocation } from "wouter";
 
@@ -37,7 +37,8 @@ export default function ResultsPage() {
     saveMatchResult,
     unlockTeams,
     updateWorkspace,
-    visibilitySettings
+    visibilitySettings,
+    tournamentHistory
   } = useApp();
   const [, navigate] = useLocation();
   
@@ -396,9 +397,106 @@ export default function ResultsPage() {
             ))
           )}
         </AnimatePresence>
+
+        {/* Completed Tournaments Section */}
+        {tournamentHistory && tournamentHistory.length > 0 && (
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 flex items-center gap-2">
+                <Trophy className="h-3 w-3" />
+                Completed Tournaments
+              </h2>
+              <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-400 bg-amber-500/10">
+                {tournamentHistory.length}
+              </Badge>
+            </div>
+            {tournamentHistory.map((entry) => (
+              <TournamentHistoryCard key={entry.id} entry={entry} />
+            ))}
+          </div>
+        )}
       </div>
       <BottomNav />
     </div>
+  );
+}
+
+function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const standings = entry.teams.map(team => {
+    let wins = 0, draws = 0, losses = 0, points = 0;
+    entry.fixtures.forEach((f: TournamentFixture) => {
+      if (!f.result) return;
+      const isA = f.teamA.id === team.id;
+      const isB = f.teamB.id === team.id;
+      if (!isA && !isB) return;
+      if (f.result === "draw") { draws++; points++; }
+      else if ((f.result === "A" && isA) || (f.result === "B" && isB)) { wins++; points += 3; }
+      else { losses++; }
+    });
+    return { team, wins, draws, losses, points };
+  }).sort((a, b) => b.points - a.points || b.wins - a.wins);
+
+  const completedFixtures = entry.fixtures.filter((f: TournamentFixture) => f.result).length;
+
+  return (
+    <Card className="border-border/50 border-amber-500/20 bg-amber-500/5">
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CardHeader className="pb-2 pt-3 px-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+                <CalendarDays className="h-3 w-3 text-amber-400" />
+                {format(new Date(entry.date), 'MMM d, yyyy h:mm a')}
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[9px]">
+                  {entry.teams.length} Teams
+                </Badge>
+                <span className="text-[10px] text-muted-foreground">{completedFixtures} fixtures</span>
+                {standings[0] && (
+                  <span className="text-[10px] text-amber-300 font-medium">🏆 {standings[0].team.label}</span>
+                )}
+              </div>
+            </div>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="px-2 py-1 rounded-full text-[10px] text-muted-foreground">
+                {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="px-4 pb-3 pt-0 space-y-3">
+            <div className="divide-y divide-border/30 rounded-lg border border-border/40 overflow-hidden">
+              {standings.map((row, i) => (
+                <div key={row.team.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <span className={`font-bold w-4 text-center ${i === 0 ? "text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span>
+                  <span className="flex-1 font-medium">{row.team.label}</span>
+                  <span className="text-xs text-muted-foreground">{row.wins}W {row.draws}D {row.losses}L</span>
+                  <Badge variant={i === 0 ? "default" : "secondary"} className="text-xs font-bold min-w-[28px] text-center">{row.points}pt</Badge>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-1">
+              {entry.fixtures.map((f: TournamentFixture, idx: number) => (
+                <div key={f.id} className="flex items-center gap-2 text-[10px] text-muted-foreground py-0.5">
+                  <span className="w-4 text-center text-muted-foreground/50">{idx + 1}</span>
+                  <span className={`flex-1 truncate ${f.result === "A" ? "text-foreground font-medium" : ""}`}>{f.teamA.label}</span>
+                  <span className="font-mono">
+                    {f.result === "A" ? "Win" : f.result === "draw" ? "Draw" : "Loss"}
+                    {" / "}
+                    {f.result === "B" ? "Win" : f.result === "draw" ? "Draw" : "Loss"}
+                  </span>
+                  <span className={`flex-1 truncate text-right ${f.result === "B" ? "text-foreground font-medium" : ""}`}>{f.teamB.label}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, InsertPlayer, GenerationWorkspace, GeneratedTeamsSnapshot, VisibilitySettings } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, InsertPlayer, GenerationWorkspace, GeneratedTeamsSnapshot, VisibilitySettings, TournamentHistoryEntry } from "@shared/schema";
 
 export const STORAGE_KEYS = {
   PLAYERS: "uwh_players",
@@ -9,6 +9,7 @@ export const STORAGE_KEYS = {
   SAVED_TAGS: "uwh_saved_tags",
   GENERATION_WORKSPACE: "uwh_generation_workspace",
   VISIBILITY_SETTINGS: "uwh_visibility_settings",
+  TOURNAMENT_HISTORY: "uwh_tournament_history",
 } as const;
 
 export const DEFAULT_VISIBILITY_SETTINGS: import("@shared/schema").VisibilitySettings = {
@@ -116,6 +117,7 @@ export interface AppData {
   savedTags: string[];
   generationWorkspace: GenerationWorkspace;
   visibilitySettings: VisibilitySettings;
+  tournamentHistory: TournamentHistoryEntry[];
 }
 
 const generateId = () => Math.floor(Math.random() * 1000000);
@@ -163,6 +165,7 @@ export const storage = {
       savedTags: this.read<string[]>(STORAGE_KEYS.SAVED_TAGS, []),
       generationWorkspace: mergedWorkspace,
       visibilitySettings: this.read<VisibilitySettings>(STORAGE_KEYS.VISIBILITY_SETTINGS, DEFAULT_VISIBILITY_SETTINGS),
+      tournamentHistory: this.read<TournamentHistoryEntry[]>(STORAGE_KEYS.TOURNAMENT_HISTORY, []),
     };
   },
 
@@ -175,6 +178,7 @@ export const storage = {
     if (data.savedTags !== undefined) this.write(STORAGE_KEYS.SAVED_TAGS, data.savedTags);
     if (data.generationWorkspace) this.write(STORAGE_KEYS.GENERATION_WORKSPACE, data.generationWorkspace);
     if (data.visibilitySettings) this.write(STORAGE_KEYS.VISIBILITY_SETTINGS, data.visibilitySettings);
+    if (data.tournamentHistory) this.write(STORAGE_KEYS.TOURNAMENT_HISTORY, data.tournamentHistory);
   },
 
   clearAllData(): void {

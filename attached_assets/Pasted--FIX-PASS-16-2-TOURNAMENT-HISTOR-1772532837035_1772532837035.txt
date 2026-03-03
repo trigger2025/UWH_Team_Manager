@@ -1,0 +1,128 @@
+/* ============================================================
+   FIX PASS 16.2 – TOURNAMENT HISTORY + RESULTS INTEGRATION
+   ============================================================ */
+
+
+/* ================================
+   1️⃣ INIT HISTORY STORE
+   ================================ */
+
+if (!state.tournamentHistory) {
+  state.tournamentHistory = [];
+}
+
+
+/* ================================
+   2️⃣ MODIFY FINALISE FUNCTION
+   ================================ */
+
+function finaliseTournament() {
+  if (!state.tournament || !state.tournament.active) return;
+
+  // Apply rating changes (already implemented in Pass 16 logic)
+  applyTournamentRatings();
+
+  // Mark complete
+  const completedTournament = {
+    id: Date.now(),
+    date: new Date().toISOString(),
+    teams: state.tournament.teams,
+    fixtures: state.tournament.fixtures,
+    pools: state.tournament.pools,
+    completed: true
+  };
+
+  state.tournamentHistory.unshift(completedTournament);
+
+  // Clear active tournament
+  state.tournament = null;
+
+  navigateTo("results");
+}
+
+
+/* ================================
+   3️⃣ EXTEND RESULTS TAB RENDER
+   ================================ */
+
+function renderResults() {
+  renderNormalMatchResults();
+
+  // Divider
+  renderSectionTitle("Completed Tournaments");
+
+  if (!state.tournamentHistory.length) {
+    renderText("No tournaments completed yet.");
+    return;
+  }
+
+  state.tournamentHistory.forEach(tournament => {
+    renderTournamentSummaryCard(tournament);
+  });
+}
+
+
+/* ================================
+   4️⃣ TOURNAMENT SUMMARY CARD
+   ================================ */
+
+function renderTournamentSummaryCard(tournament) {
+  renderCard({
+    title: "Tournament – " + new Date(tournament.date).toLocaleDateString(),
+    subtitle: tournament.fixtures.length + " matches",
+    onClick: () => viewTournamentDetails(tournament)
+  });
+}
+
+
+/* ================================
+   5️⃣ VIEW TOURNAMENT DETAILS
+   ================================ */
+
+function viewTournamentDetails(tournament) {
+  state.navigation.currentTab = "tournamentHistoryView";
+  state.navigation.selectedTournament = tournament;
+  renderApp();
+}
+
+
+/* ================================
+   6️⃣ HISTORY VIEW RENDER
+   ================================ */
+
+function renderTournamentHistoryView() {
+  const tournament = state.navigation.selectedTournament;
+  if (!tournament) return;
+
+  renderSectionTitle("Tournament Results");
+
+  tournament.fixtures.forEach(match => {
+    renderMatchRow({
+      teamA: match.teamA.name,
+      teamB: match.teamB.name,
+      result: match.result || "Pending",
+      pool: match.pool
+    });
+  });
+
+  renderButton({
+    label: "Back",
+    onClick: () => navigateTo("results")
+  });
+}
+
+
+/* ================================
+   7️⃣ ROUTING ADDITION
+   ================================ */
+
+const originalRenderApp = renderApp;
+
+renderApp = function () {
+  if (state.navigation.currentTab === "tournamentHistoryView") {
+    renderTournamentHistoryView();
+    return;
+  }
+
+  originalRenderApp();
+};

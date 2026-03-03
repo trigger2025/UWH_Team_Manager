@@ -60,6 +60,8 @@ Preferred communication style: Simple, everyday language.
 - **Finalise**: All fixtures must have results before finalising; `finaliseTournament` applies Elo rating changes with 70% K-factor (tournament modifier) to all players and marks the tournament as finalised
 - **Reset**: Clears tournament state from workspace; rating changes applied before finalisation are not reversed
 - **Rating Impact**: Win = +pts, Loss = -pts, Draw = proportional; uses same `calculateRatingAdjustments` as standard matches but with `tournamentMode: true`
+- **History**: On finalise, tournament is saved to `tournamentHistory[]` (separate `uwh_tournament_history` localStorage key) and the active tournament is cleared; navigates to /results
+- **Results Page Integration**: Completed Tournaments section appears at the bottom of Session History when history exists; each entry is a collapsible card showing date, team count, fixture count, winner badge, final standings (points), and all fixture outcomes
 
 ## Two Pools Mode
 - **Pool Assignment**: Each selected player must be assigned to Pool A or Pool B before generation

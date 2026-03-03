@@ -203,6 +203,13 @@ export interface TournamentState {
   completedCount: number;
 }
 
+export interface TournamentHistoryEntry {
+  id: number;
+  date: string;
+  teams: TournamentTeam[];
+  fixtures: TournamentFixture[];
+}
+
 // Generation workspace state (persisted globally)
 export interface GenerationWorkspace {
   mode: GenerationMode;

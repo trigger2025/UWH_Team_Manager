@@ -170,7 +170,7 @@ export default function TournamentPage() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={finaliseTournament}>
+                <AlertDialogAction onClick={() => { finaliseTournament(); navigate("/results"); }}>
                   Finalise
                 </AlertDialogAction>
               </AlertDialogFooter>
