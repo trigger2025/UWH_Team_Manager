@@ -195,12 +195,19 @@ export interface TournamentFixture {
   result: "A" | "B" | "draw" | null;
 }
 
+export interface PlayerSnapshot {
+  playerId: number;
+  ratingBefore: number;
+  weakHandRatingBefore?: number;
+}
+
 export interface TournamentState {
   active: boolean;
   finalised: boolean;
   teams: TournamentTeam[];
   fixtures: TournamentFixture[];
   completedCount: number;
+  playerSnapshots: PlayerSnapshot[];
 }
 
 export interface TournamentHistoryEntry {
@@ -208,6 +215,7 @@ export interface TournamentHistoryEntry {
   date: string;
   teams: TournamentTeam[];
   fixtures: TournamentFixture[];
+  playerSnapshots: PlayerSnapshot[];
 }
 
 // Generation workspace state (persisted globally)

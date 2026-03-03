@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams, TeamTemplate, TeamTemplateStructure, PlayerWithAssignedFormationRole, TournamentTeam, TournamentFixture, TournamentState, TournamentHistoryEntry } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams, TeamTemplate, TeamTemplateStructure, PlayerWithAssignedFormationRole, TournamentTeam, TournamentFixture, TournamentState, TournamentHistoryEntry, PlayerSnapshot } from "@shared/schema";
 import { storage, AppData, DEFAULT_GENERATION_WORKSPACE, DEFAULT_VISIBILITY_SETTINGS } from "@/lib/storage";
 import { calculateRatingAdjustments, applyRatingAdjustments } from "@/lib/rating-logic";
 import { generateRoundRobin } from "@/lib/team-logic";
@@ -51,6 +51,7 @@ interface AppState extends AppData {
   setTournamentFixtureResult: (fixtureId: number, result: "A" | "B" | "draw") => void;
   finaliseTournament: () => void;
   resetTournament: () => void;
+  deleteTournamentHistory: (id: number) => void;
   tournamentHistory: TournamentHistoryEntry[];
 }
 
@@ -800,21 +801,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // --- Tournament ---
 
   const confirmTournament = useCallback((teams: TournamentTeam[]) => {
-    const fixtures = generateRoundRobin(teams);
-    const tournament: TournamentState = {
-      active: true,
-      finalised: false,
-      teams,
-      fixtures,
-      completedCount: 0,
-    };
-    setState(prev => ({
-      ...prev,
-      generationWorkspace: {
-        ...prev.generationWorkspace,
-        tournament,
-      }
-    }));
+    setState(prev => {
+      const fixtures = generateRoundRobin(teams);
+      // Snapshot each player's current rating before the tournament begins
+      const seenIds = new Set<number>();
+      const playerSnapshots: PlayerSnapshot[] = [];
+      teams.forEach(team => {
+        team.players.forEach(p => {
+          if (!seenIds.has(p.id)) {
+            seenIds.add(p.id);
+            const player = prev.players.find(pl => pl.id === p.id);
+            if (player) {
+              playerSnapshots.push({
+                playerId: player.id,
+                ratingBefore: player.rating,
+                weakHandRatingBefore: player.weakHandRating ?? undefined,
+              });
+            }
+          }
+        });
+      });
+      const tournament: TournamentState = {
+        active: true,
+        finalised: false,
+        teams,
+        fixtures,
+        completedCount: 0,
+        playerSnapshots,
+      };
+      return {
+        ...prev,
+        generationWorkspace: {
+          ...prev.generationWorkspace,
+          tournament,
+        }
+      };
+    });
   }, []);
 
   const setTournamentFixtureResult = useCallback((fixtureId: number, result: "A" | "B" | "draw") => {
@@ -913,6 +935,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         date: new Date().toISOString(),
         teams: t.teams,
         fixtures: t.fixtures,
+        playerSnapshots: t.playerSnapshots || [],
       };
 
       return {
@@ -935,6 +958,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         tournament: null,
       }
     }));
+  }, []);
+
+  const deleteTournamentHistory = useCallback((id: number) => {
+    setState(prev => {
+      const entry = (prev.tournamentHistory || []).find(e => e.id === id);
+      if (!entry) return prev;
+      // Revert each player's rating to the pre-tournament snapshot
+      let updatedPlayers = [...prev.players];
+      (entry.playerSnapshots || []).forEach((snapshot: PlayerSnapshot) => {
+        updatedPlayers = updatedPlayers.map(p => {
+          if (p.id !== snapshot.playerId) return p;
+          return {
+            ...p,
+            rating: snapshot.ratingBefore,
+            ...(snapshot.weakHandRatingBefore !== undefined && p.weakHandEnabled
+              ? { weakHandRating: snapshot.weakHandRatingBefore }
+              : {}),
+          };
+        });
+      });
+      return {
+        ...prev,
+        players: updatedPlayers,
+        tournamentHistory: (prev.tournamentHistory || []).filter(e => e.id !== id),
+      };
+    });
   }, []);
 
   return (
@@ -971,6 +1020,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTournamentFixtureResult,
       finaliseTournament,
       resetTournament,
+      deleteTournamentHistory,
       tournamentHistory: state.tournamentHistory || [],
     }}>
       {children}

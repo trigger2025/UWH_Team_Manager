@@ -422,6 +422,7 @@ export default function ResultsPage() {
 }
 
 function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
+  const { deleteTournamentHistory } = useApp();
   const [isOpen, setIsOpen] = useState(false);
 
   const standings = entry.teams.map(team => {
@@ -460,11 +461,38 @@ function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
                 )}
               </div>
             </div>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="px-2 py-1 rounded-full text-[10px] text-muted-foreground">
-                {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              </Button>
-            </CollapsibleTrigger>
+            <div className="flex items-center gap-1">
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="px-2 py-1 rounded-full text-[10px] text-muted-foreground">
+                  {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </Button>
+              </CollapsibleTrigger>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground/40 hover:text-destructive" data-testid={`button-delete-tournament-${entry.id}`}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Tournament?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will remove this tournament from history and revert all player ratings to their pre-tournament values.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => deleteTournamentHistory(entry.id)}
+                      data-testid={`button-confirm-delete-tournament-${entry.id}`}
+                    >
+                      Delete & Revert Ratings
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
         </CardHeader>
         <CollapsibleContent>

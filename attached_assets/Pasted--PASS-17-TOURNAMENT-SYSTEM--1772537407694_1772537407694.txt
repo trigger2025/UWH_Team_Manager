@@ -1,0 +1,264 @@
+/* ===============================
+   PASS 17 – TOURNAMENT SYSTEM
+   =============================== */
+
+/* ---------------------------------
+   TYPES
+--------------------------------- */
+
+type TournamentFixture = {
+  id: string
+  teamAId: string
+  teamBId: string
+  pool: "A" | "B" | null
+  result: "A" | "B" | "Draw" | null
+}
+
+type TournamentTeam = {
+  id: string
+  name: string
+  playerIds: string[]
+  averageRatingAtGeneration: number
+}
+
+type TournamentPlayerSnapshot = {
+  playerId: string
+  ratingBefore: number
+  ratingAfter?: number
+}
+
+type TournamentData = {
+  id: string
+  teams: TournamentTeam[]
+  fixtures: TournamentFixture[]
+  playerSnapshots: TournamentPlayerSnapshot[]
+  pools: 1 | 2
+  completed: boolean
+}
+
+/* ---------------------------------
+   STATE
+--------------------------------- */
+
+const [activeTournament, setActiveTournament] = useState<TournamentData | null>(null)
+
+/* ---------------------------------
+   CAPTAIN NAMING
+--------------------------------- */
+
+function buildCaptainTeamName(teamPlayers: Player[]): string {
+  const sorted = [...teamPlayers].sort((a, b) => b.rating - a.rating)
+  const captain = sorted[0]
+  const first = captain.name.split(" ")[0]
+  const lastInitial = captain.name.split(" ")[1]?.[0] ?? ""
+  return `${first} ${lastInitial}'s Team`
+}
+
+/* ---------------------------------
+   CREATE TOURNAMENT FROM GENERATED TEAMS
+--------------------------------- */
+
+function startTournamentFromTeams(generatedTeams: GeneratedTeam[]) {
+  const tournamentTeams: TournamentTeam[] = generatedTeams.map(team => {
+    const players = team.players
+    const avg =
+      players.reduce((sum, p) => sum + p.rating, 0) / players.length
+
+    return {
+      id: team.id,
+      name: buildCaptainTeamName(players),
+      playerIds: players.map(p => p.id),
+      averageRatingAtGeneration: avg,
+    }
+  })
+
+  const snapshots: TournamentPlayerSnapshot[] = generatedTeams
+    .flatMap(t => t.players)
+    .map(p => ({
+      playerId: p.id,
+      ratingBefore: p.rating,
+    }))
+
+  const tournament: TournamentData = {
+    id: crypto.randomUUID(),
+    teams: tournamentTeams,
+    fixtures: [],
+    playerSnapshots: snapshots,
+    pools: 1,
+    completed: false,
+  }
+
+  setActiveTournament(tournament)
+}
+
+/* ---------------------------------
+   ROUND ROBIN GENERATOR
+--------------------------------- */
+
+function generateRoundRobinFixtures(
+  teams: TournamentTeam[],
+  pools: 1 | 2
+): TournamentFixture[] {
+  const fixtures: TournamentFixture[] = []
+  const teamCount = teams.length
+
+  for (let i = 0; i < teamCount; i++) {
+    for (let j = i + 1; j < teamCount; j++) {
+      fixtures.push({
+        id: crypto.randomUUID(),
+        teamAId: teams[i].id,
+        teamBId: teams[j].id,
+        pool: null,
+        result: null,
+      })
+    }
+  }
+
+  if (pools === 1) return fixtures
+
+  // Balanced A/B assignment
+  const poolCounts: Record<string, { A: number; B: number }> = {}
+
+  teams.forEach(t => {
+    poolCounts[t.id] = { A: 0, B: 0 }
+  })
+
+  fixtures.forEach(f => {
+    const aCount = poolCounts[f.teamAId]
+    const bCount = poolCounts[f.teamBId]
+
+    const assignToA =
+      aCount.A + bCount.A <= aCount.B + bCount.B
+
+    if (assignToA) {
+      f.pool = "A"
+      poolCounts[f.teamAId].A++
+      poolCounts[f.teamBId].A++
+    } else {
+      f.pool = "B"
+      poolCounts[f.teamAId].B++
+      poolCounts[f.teamBId].B++
+    }
+  })
+
+  return fixtures
+}
+
+/* ---------------------------------
+   GENERATE SCHEDULE
+--------------------------------- */
+
+function generateTournamentSchedule(pools: 1 | 2) {
+  if (!activeTournament) return
+
+  const fixtures = generateRoundRobinFixtures(
+    activeTournament.teams,
+    pools
+  )
+
+  setActiveTournament({
+    ...activeTournament,
+    pools,
+    fixtures,
+  })
+}
+
+/* ---------------------------------
+   SET FIXTURE RESULT
+--------------------------------- */
+
+function setFixtureResult(
+  fixtureId: string,
+  result: "A" | "B" | "Draw"
+) {
+  if (!activeTournament) return
+
+  const updated = activeTournament.fixtures.map(f =>
+    f.id === fixtureId ? { ...f, result } : f
+  )
+
+  setActiveTournament({
+    ...activeTournament,
+    fixtures: updated,
+  })
+}
+
+/* ---------------------------------
+   PROGRESS
+--------------------------------- */
+
+function getTournamentProgress() {
+  if (!activeTournament) return { done: 0, total: 0 }
+
+  const total = activeTournament.fixtures.length
+  const done = activeTournament.fixtures.filter(f => f.result !== null).length
+
+  return { done, total }
+}
+
+/* ---------------------------------
+   FINALISE TOURNAMENT
+--------------------------------- */
+
+function finaliseTournament(applyRatingChange: Function) {
+  if (!activeTournament) return
+
+  const allResolved = activeTournament.fixtures.every(
+    f => f.result !== null
+  )
+
+  if (!allResolved) return
+
+  // Apply reduced rating change
+  activeTournament.fixtures.forEach(f => {
+    if (f.result === "Draw") {
+      applyRatingChange(f.teamAId, f.teamBId, 0.5)
+    } else if (f.result === "A") {
+      applyRatingChange(f.teamAId, f.teamBId, 1)
+    } else if (f.result === "B") {
+      applyRatingChange(f.teamBId, f.teamAId, 1)
+    }
+  })
+
+  // Snapshot after ratings
+  const updatedSnapshots = activeTournament.playerSnapshots.map(s => {
+    const player = getPlayerById(s.playerId)
+    return {
+      ...s,
+      ratingAfter: player.rating,
+    }
+  })
+
+  const completedTournament = {
+    ...activeTournament,
+    playerSnapshots: updatedSnapshots,
+    completed: true,
+  }
+
+  saveTournamentToResults(completedTournament)
+
+  setActiveTournament(null)
+}
+
+/* ---------------------------------
+   DELETE TOURNAMENT (REVERT RATINGS)
+--------------------------------- */
+
+function deleteTournament(tournament: TournamentData) {
+  tournament.playerSnapshots.forEach(snapshot => {
+    updatePlayerRating(snapshot.playerId, snapshot.ratingBefore)
+  })
+
+  removeTournamentFromResults(tournament.id)
+}
+
+/* ---------------------------------
+   NOTES
+---------------------------------
+   - Teams named once via captain.
+   - Names used universally.
+   - Ratings toggle respected globally.
+   - No score input.
+   - Draw supported.
+   - Persistent via existing storage.
+--------------------------------- */

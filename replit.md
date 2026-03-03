@@ -54,6 +54,9 @@ Preferred communication style: Simple, everyday language.
 
 ## Tournament Mode
 - **Generation**: Select players + number of teams (2-6), choose a formation; `generateMultipleTeams` splits players evenly into N teams using snake draft
+- **Captain Naming**: Teams are named after their highest-rated player — format `{firstName} {lastInitial}'s Team` (e.g. "John S's Team")
+- **Player Snapshots**: At tournament start, each player's current rating is snapshotted (`ratingBefore`, `weakHandRatingBefore`); stored in `TournamentState.playerSnapshots` and persisted to `TournamentHistoryEntry`
+- **Delete with Reversal**: Deleting a tournament history entry reverts all player ratings to their pre-tournament snapshot values
 - **Round Robin Fixtures**: `generateRoundRobin` creates all N*(N-1)/2 fixtures; stored in `generationWorkspace.tournament` as `TournamentState`
 - **Tournament Page**: `/tournament` shows progress bar, all fixture cards with result buttons (Team A Win / Draw / Team B Win), live standings table
 - **Result Recording**: Each fixture result can be set/changed until finalised; `completedCount` updates automatically

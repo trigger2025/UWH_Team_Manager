@@ -335,7 +335,17 @@ export function movePlayerBetweenTeams(
   return newTeams;
 }
 
-const TOURNAMENT_TEAM_LABELS = ["Team 1", "Team 2", "Team 3", "Team 4", "Team 5", "Team 6"];
+function buildCaptainTeamName(players: Player[], playerOffHandSelections: PlayerOffHandSelection = {}): string {
+  if (!players.length) return "Team";
+  const sorted = [...players].sort((a, b) =>
+    getEffectiveRating(b, playerOffHandSelections).rating - getEffectiveRating(a, playerOffHandSelections).rating
+  );
+  const captain = sorted[0];
+  const parts = captain.name.trim().split(/\s+/);
+  const first = parts[0];
+  const lastInitial = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return lastInitial ? `${first} ${lastInitial}'s Team` : `${first}'s Team`;
+}
 
 /**
  * Generates N balanced teams from a pool of players for tournament mode.
@@ -403,7 +413,7 @@ export function generateMultipleTeams(
     const assigned = assignFormationRoles(players, formation, playerOffHandSelections, adminSettings);
     return {
       id: `team-${i + 1}`,
-      label: TOURNAMENT_TEAM_LABELS[i] || `Team ${i + 1}`,
+      label: buildCaptainTeamName(players, playerOffHandSelections),
       players: assigned,
       totalRating: assigned.reduce((sum, p) => sum + p.ratingUsed, 0),
       formation,
