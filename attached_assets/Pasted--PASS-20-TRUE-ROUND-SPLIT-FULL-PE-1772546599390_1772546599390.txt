@@ -1,0 +1,183 @@
+/* =========================================================
+   PASS 20 – TRUE ROUND SPLIT + FULL PERSISTENCE + EXPORT FIX
+========================================================= */
+
+
+/* ===============================
+   ROUND ROBIN WITH TRUE ROUNDS
+=============================== */
+
+function generateRounds(teams) {
+  const list = [...teams];
+
+  if (list.length % 2 !== 0) {
+    list.push({ name: "BYE" });
+  }
+
+  const n = list.length;
+  const rounds = [];
+
+  for (let r = 0; r < n - 1; r++) {
+    const round = [];
+
+    for (let i = 0; i < n / 2; i++) {
+      round.push({
+        teamA: list[i].name,
+        teamB: list[n - 1 - i].name
+      });
+    }
+
+    rounds.push(round);
+
+    // rotate (keep first fixed)
+    const fixed = list[0];
+    const rest = list.slice(1);
+    rest.unshift(rest.pop());
+    list.splice(0, list.length, fixed, ...rest);
+  }
+
+  return rounds;
+}
+
+
+/* ===============================
+   GENERATE SCHEDULE (CORRECT)
+=============================== */
+
+function generateSchedule(teams, options) {
+  const rounds = generateRounds(teams);
+  const schedule = [];
+
+  let currentTime = parseTime(options.startTime);
+
+  rounds.forEach(round => {
+    const games = round.filter(
+      g => g.teamA !== "BYE" && g.teamB !== "BYE"
+    );
+
+    const byeGame = round.find(
+      g => g.teamA === "BYE" || g.teamB === "BYE"
+    );
+
+    const bye = byeGame
+      ? (byeGame.teamA === "BYE"
+          ? byeGame.teamB
+          : byeGame.teamA)
+      : "-";
+
+    let poolA = "-";
+    let poolB = "-";
+
+    if (options.pools === 1) {
+      if (games[0]) {
+        poolA = `${games[0].teamA} vs ${games[0].teamB}`;
+      }
+    }
+
+    if (options.pools === 2) {
+      if (games[0]) {
+        poolA = `${games[0].teamA} vs ${games[0].teamB}`;
+      }
+      if (games[1]) {
+        poolB = `${games[1].teamA} vs ${games[1].teamB}`;
+      }
+    }
+
+    schedule.push({
+      time: formatTime(currentTime),
+      poolA,
+      poolB,
+      bye
+    });
+
+    currentTime += options.gameDuration + options.turnover;
+  });
+
+  persistSchedule(schedule, options);
+  return schedule;
+}
+
+
+/* ===============================
+   FULL PERSISTENCE
+=============================== */
+
+function persistSchedule(schedule, options) {
+  localStorage.setItem("tournamentSchedule", JSON.stringify(schedule));
+  localStorage.setItem("tournamentOptions", JSON.stringify(options));
+}
+
+function loadPersistedTournament() {
+  const schedule = JSON.parse(
+    localStorage.getItem("tournamentSchedule")
+  );
+
+  const options = JSON.parse(
+    localStorage.getItem("tournamentOptions")
+  );
+
+  return { schedule, options };
+}
+
+function clearTournamentPersistence() {
+  localStorage.removeItem("tournamentSchedule");
+  localStorage.removeItem("tournamentOptions");
+}
+
+
+/* ===============================
+   EXPORT – PROPERLY WIRED
+=============================== */
+
+async function exportElement(elementId, filename) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+
+  if (!window.html2canvas) {
+    alert("html2canvas not loaded.");
+    return;
+  }
+
+  const canvas = await window.html2canvas(element);
+
+  const link = document.createElement("a");
+  link.download = filename;
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+}
+
+
+/* ===============================
+   EXPORT GENERATED TEAMS
+=============================== */
+
+function exportGeneratedTeams() {
+  const showRatings = confirm("Include ratings?");
+  const showPositions = confirm("Include positions?");
+
+  const container = document.getElementById("generated-teams");
+
+  container.querySelectorAll(".rating").forEach(el => {
+    el.style.display = showRatings ? "" : "none";
+  });
+
+  container.querySelectorAll(".position").forEach(el => {
+    el.style.display = showPositions ? "" : "none";
+  });
+
+  exportElement("generated-teams", "generated-teams.png");
+
+  setTimeout(() => {
+    container.querySelectorAll(".rating,.position")
+      .forEach(el => el.style.display = "");
+  }, 300);
+}
+
+
+/* ===============================
+   EXPORT SCHEDULE
+=============================== */
+
+function exportSchedule() {
+  exportElement("schedule-container", "tournament-schedule.png");
+}

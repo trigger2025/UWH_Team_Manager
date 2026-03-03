@@ -78,6 +78,7 @@ function buildScheduleRounds(teamList: TournamentTeam[]): Array<{
 }
 
 const SCHEDULE_STORAGE_KEY = "activeTournamentSchedule";
+const OPTIONS_STORAGE_KEY = "tournamentScheduleOptions";
 
 export default function TournamentPage() {
   const { generationWorkspace, setTournamentFixtureResult, finaliseTournament, resetTournament } = useApp();
@@ -91,11 +92,20 @@ export default function TournamentPage() {
   const [generatedSchedule, setGeneratedSchedule] = useState<ScheduleSlot[] | null>(null);
   const scheduleRef = useRef<HTMLDivElement>(null);
 
-  // Load persisted schedule on mount
+  // Load persisted schedule and options on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(SCHEDULE_STORAGE_KEY);
-      if (saved) setGeneratedSchedule(JSON.parse(saved));
+      const savedSchedule = localStorage.getItem(SCHEDULE_STORAGE_KEY);
+      if (savedSchedule) setGeneratedSchedule(JSON.parse(savedSchedule));
+
+      const savedOptions = localStorage.getItem(OPTIONS_STORAGE_KEY);
+      if (savedOptions) {
+        const opts = JSON.parse(savedOptions);
+        if (opts.startTime) setScheduleStartTime(opts.startTime);
+        if (opts.duration) setScheduleDuration(opts.duration);
+        if (opts.turnover !== undefined) setScheduleTurnover(opts.turnover);
+        if (opts.pools) setSchedulePools(opts.pools);
+      }
     } catch {}
   }, []);
 
@@ -176,6 +186,12 @@ export default function TournamentPage() {
     }
 
     localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(slots));
+    localStorage.setItem(OPTIONS_STORAGE_KEY, JSON.stringify({
+      startTime: scheduleStartTime,
+      duration: scheduleDuration,
+      turnover: scheduleTurnover,
+      pools: schedulePools,
+    }));
     setGeneratedSchedule(slots);
   }
 
@@ -183,13 +199,10 @@ export default function TournamentPage() {
     if (!scheduleRef.current) return;
     const html2canvas = (await import("html2canvas")).default;
     const canvas = await html2canvas(scheduleRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
-    canvas.toBlob(blob => {
-      if (!blob) return;
-      const link = document.createElement("a");
-      link.download = "tournament-schedule.png";
-      link.href = URL.createObjectURL(blob);
-      link.click();
-    });
+    const link = document.createElement("a");
+    link.download = "tournament-schedule.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
   }
 
   return (
@@ -216,7 +229,7 @@ export default function TournamentPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => { resetTournament(); localStorage.removeItem(SCHEDULE_STORAGE_KEY); setGeneratedSchedule(null); navigate("/generate"); }}>
+              <AlertDialogAction onClick={() => { resetTournament(); localStorage.removeItem(SCHEDULE_STORAGE_KEY); localStorage.removeItem(OPTIONS_STORAGE_KEY); setGeneratedSchedule(null); navigate("/generate"); }}>
                 Reset
               </AlertDialogAction>
             </AlertDialogFooter>

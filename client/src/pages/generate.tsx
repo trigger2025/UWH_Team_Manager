@@ -86,13 +86,10 @@ export default function GeneratePage() {
     if (!teamsRef.current) return;
     const html2canvas = (await import("html2canvas")).default;
     const canvas = await html2canvas(teamsRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
-    canvas.toBlob(blob => {
-      if (!blob) return;
-      const link = document.createElement("a");
-      link.download = "generated-teams.png";
-      link.href = URL.createObjectURL(blob);
-      link.click();
-    });
+    const link = document.createElement("a");
+    link.download = "generated-teams.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
   }
 
   // Filter to only show players (no "active" filter during generation per requirements)
