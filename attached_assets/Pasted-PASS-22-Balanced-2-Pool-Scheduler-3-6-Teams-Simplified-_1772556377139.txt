@@ -1,0 +1,234 @@
+PASS 22 – Balanced 2-Pool Scheduler (3-6 Teams) + Simplified Tournament Results View
+
+========================================
+SECTION 1 — REPLACE 2-POOL SCHEDULER
+========================================
+
+DELETE the existing 2-pool generation logic entirely.
+
+REPLACE with the following deterministic constrained scheduler.
+
+----------------------------------------
+UTIL — Round Robin (Circle Method)
+----------------------------------------
+
+function generateRoundRobin(teams) {
+  const list = [...teams];
+  const isOdd = list.length % 2 !== 0;
+
+  if (isOdd) {
+    list.push({ id: "__BYE__" });
+  }
+
+  const rounds = [];
+  const totalRounds = list.length - 1;
+  const half = list.length / 2;
+
+  for (let round = 0; round < totalRounds; round++) {
+    const pairings = [];
+
+    for (let i = 0; i < half; i++) {
+      const teamA = list[i];
+      const teamB = list[list.length - 1 - i];
+
+      if (teamA.id !== "__BYE__" && teamB.id !== "__BYE__") {
+        pairings.push([teamA, teamB]);
+      }
+    }
+
+    rounds.push(pairings);
+
+    // rotate
+    list.splice(1, 0, list.pop());
+  }
+
+  return rounds;
+}
+
+----------------------------------------
+2-POOL BALANCED BUILDER (3–6 Teams)
+----------------------------------------
+
+function generateBalancedSchedule(teams, useTwoPools) {
+  const teamCount = teams.length;
+
+  // 3 teams → force 1 pool
+  if (teamCount === 3) {
+    useTwoPools = false;
+  }
+
+  const rounds = generateRoundRobin(teams);
+
+  const appearanceTracker = {};
+  teams.forEach(t => {
+    appearanceTracker[t.id] = {
+      poolA: 0,
+      poolB: 0,
+      games: 0
+    };
+  });
+
+  const schedule = [];
+
+  rounds.forEach((pairings, roundIndex) => {
+    const row = {
+      round: roundIndex,
+      poolA: null,
+      poolB: null,
+      bye: []
+    };
+
+    const usedThisRound = new Set();
+
+    if (!useTwoPools || pairings.length <= 1) {
+      // Single pool
+      if (pairings[0]) {
+        row.poolA = pairings[0];
+        pairings[0].forEach(t => {
+          appearanceTracker[t.id].games++;
+        });
+      }
+
+      teams.forEach(t => {
+        if (!pairings.flat().includes(t)) {
+          row.bye.push(t);
+        }
+      });
+
+      schedule.push(row);
+      return;
+    }
+
+    // Two Pools (4–6 teams)
+
+    pairings.forEach(match => {
+      const [t1, t2] = match;
+
+      const canGoA =
+        appearanceTracker[t1.id].poolA <= appearanceTracker[t1.id].poolB &&
+        appearanceTracker[t2.id].poolA <= appearanceTracker[t2.id].poolB;
+
+      const canGoB =
+        appearanceTracker[t1.id].poolB <= appearanceTracker[t1.id].poolA &&
+        appearanceTracker[t2.id].poolB <= appearanceTracker[t2.id].poolA;
+
+      if (!row.poolA && canGoA) {
+        row.poolA = match;
+        appearanceTracker[t1.id].poolA++;
+        appearanceTracker[t2.id].poolA++;
+      } else if (!row.poolB && canGoB) {
+        row.poolB = match;
+        appearanceTracker[t1.id].poolB++;
+        appearanceTracker[t2.id].poolB++;
+      } else if (!row.poolA) {
+        row.poolA = match;
+        appearanceTracker[t1.id].poolA++;
+        appearanceTracker[t2.id].poolA++;
+      } else {
+        row.poolB = match;
+        appearanceTracker[t1.id].poolB++;
+        appearanceTracker[t2.id].poolB++;
+      }
+
+      appearanceTracker[t1.id].games++;
+      appearanceTracker[t2.id].games++;
+      usedThisRound.add(t1.id);
+      usedThisRound.add(t2.id);
+    });
+
+    teams.forEach(t => {
+      if (!usedThisRound.has(t.id)) {
+        row.bye.push(t);
+      }
+    });
+
+    schedule.push(row);
+  });
+
+  return schedule;
+}
+
+----------------------------------------
+IMPORTANT:
+----------------------------------------
+
+• Persist BOTH:
+  - schedule
+  - pool mode (1 or 2)
+  - start time
+  - game duration
+  - turnover
+
+• When restoring from localStorage, DO NOT default pool mode to 1.
+  Restore saved option.
+
+========================================
+SECTION 2 — SIMPLIFY TOURNAMENT RESULTS VIEW
+========================================
+
+REMOVE:
+• Per-match dropdown expansions
+• Individual match rating breakdown UI
+
+REPLACE WITH:
+
+Each tournament result panel should display:
+
+------------------------------------------------
+🏆 Team Standings (static summary)
+------------------------------------------------
+1. Team Name   3W 0D 1L   9pt
+2. Team Name   2W 1D 1L   7pt
+...
+
+------------------------------------------------
+Expandable Team Summary
+------------------------------------------------
+
+Each team becomes a single dropdown:
+
+Team Name ▼
+
+Expanded view:
+
+Player Name
+400 → 384 (-16)
+
+Player Name
+500 → 492 (-8)
+
+This uses:
+originalRating
+finalRating
+netChange = finalRating - originalRating
+
+NO per-match breakdown.
+
+Keep:
+• Same rating change format as normal mode
+• Same red/green colour logic
+• Same reduced tournament weighting
+
+========================================
+SECTION 3 — SAFETY CHECK
+========================================
+
+Before finalising schedule:
+
+Validate:
+
+1. No team appears twice in same round.
+2. For 5 teams, each team:
+   - 4 games
+   - 1 bye
+3. For 2-pool mode:
+   |poolA - poolB| <= 1 for every team
+
+If validation fails:
+  regenerate once.
+If still fails:
+  fallback to single pool mode.
+
+========================================
+END PASS 22
+========================================

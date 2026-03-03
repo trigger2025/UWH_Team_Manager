@@ -425,26 +425,14 @@ function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
   const { deleteTournamentHistory, visibilitySettings } = useApp();
   const { showRatings = true } = visibilitySettings || {};
   const [isOpen, setIsOpen] = useState(false);
-  const [expandedFixtures, setExpandedFixtures] = useState<Record<number, boolean>>({});
+  const [expandedTeams, setExpandedTeams] = useState<Record<string, boolean>>({});
 
-  function toggleFixture(id: number) {
-    setExpandedFixtures(prev => ({ ...prev, [id]: !prev[id] }));
+  function toggleTeam(id: string) {
+    setExpandedTeams(prev => ({ ...prev, [id]: !prev[id] }));
   }
 
   function getSnap(playerId: number): PlayerSnapshot | undefined {
     return (entry.playerSnapshots || []).find((s: PlayerSnapshot) => s.playerId === playerId);
-  }
-
-  function RatingDelta({ before, after }: { before: number; after?: number }) {
-    if (after === undefined) return <span className="font-mono text-muted-foreground">{before}</span>;
-    const delta = after - before;
-    const color = delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground";
-    const sign = delta > 0 ? "+" : "";
-    return (
-      <span className={`font-mono ${color}`}>
-        {before}→{after} <span className="text-[9px]">({sign}{delta})</span>
-      </span>
-    );
   }
 
   const standings = entry.teams.map(team => {
@@ -519,56 +507,58 @@ function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
         </CardHeader>
         <CollapsibleContent>
           <CardContent className="px-4 pb-3 pt-0 space-y-3">
+            {/* Standings table */}
             <div className="divide-y divide-border/30 rounded-lg border border-border/40 overflow-hidden">
               {standings.map((row, i) => (
                 <div key={row.team.id} className="flex items-center gap-3 px-3 py-2 text-sm">
                   <span className={`font-bold w-4 text-center ${i === 0 ? "text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span>
-                  <span className="flex-1 font-medium">{row.team.label}</span>
-                  <span className="text-xs text-muted-foreground">{row.wins}W {row.draws}D {row.losses}L</span>
-                  <Badge variant={i === 0 ? "default" : "secondary"} className="text-xs font-bold min-w-[28px] text-center">{row.points}pt</Badge>
+                  <span className="flex-1 font-medium truncate">{row.team.label}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">{row.wins}W {row.draws}D {row.losses}L</span>
+                  <Badge variant={i === 0 ? "default" : "secondary"} className="text-xs font-bold min-w-[28px] text-center shrink-0">{row.points}pt</Badge>
                 </div>
               ))}
             </div>
-            <div className="space-y-1">
-              {entry.fixtures.map((f: TournamentFixture, idx: number) => (
-                <div key={f.id} className="rounded border border-border/20 overflow-hidden">
-                  <button
-                    className="w-full flex items-center gap-2 text-[10px] text-muted-foreground py-1 px-2 hover:bg-muted/30 transition-colors"
-                    onClick={() => toggleFixture(f.id)}
-                  >
-                    <span className="w-4 text-center text-muted-foreground/50 shrink-0">{idx + 1}</span>
-                    <span className={`flex-1 truncate text-left ${f.result === "A" ? "text-foreground font-medium" : ""}`}>{f.teamA.label}</span>
-                    <span className="font-mono shrink-0">
-                      {f.result === "A" ? "W/L" : f.result === "draw" ? "D/D" : f.result === "B" ? "L/W" : "–"}
-                    </span>
-                    <span className={`flex-1 truncate text-right ${f.result === "B" ? "text-foreground font-medium" : ""}`}>{f.teamB.label}</span>
-                    {expandedFixtures[f.id] ? <ChevronUp className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
-                  </button>
-                  {expandedFixtures[f.id] && (
-                    <div className="grid grid-cols-2 gap-2 px-2 pb-2 pt-1 bg-muted/10 border-t border-border/20">
-                      {[{ team: f.teamA, won: f.result === "A" }, { team: f.teamB, won: f.result === "B" }].map(({ team, won }) => (
-                        <div key={team.id} className="space-y-1">
-                          <div className={`text-[9px] font-bold uppercase tracking-wider ${won ? "text-amber-400" : "text-muted-foreground"}`}>
-                            {team.label} {won ? "🏆" : ""}
-                          </div>
-                          {team.players.map(p => {
-                            const snap = getSnap(p.id);
-                            return (
-                              <div key={p.id} className="text-[9px] text-muted-foreground leading-tight">
-                                <div className="truncate">{p.name}</div>
-                                {showRatings && snap && (
-                                  <RatingDelta before={snap.ratingBefore} after={snap.ratingAfter} />
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            {/* Per-team expandable rating summary */}
+            {showRatings && (
+              <div className="space-y-1">
+                {standings.map(({ team }, i) => (
+                  <div key={team.id} className="rounded border border-border/20 overflow-hidden">
+                    <button
+                      className="w-full flex items-center gap-2 text-[10px] py-1.5 px-2 hover:bg-muted/30 transition-colors text-left"
+                      onClick={() => toggleTeam(team.id)}
+                      data-testid={`button-team-summary-${team.id}`}
+                    >
+                      <span className={`font-bold w-4 text-center shrink-0 ${i === 0 ? "text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span>
+                      <span className="flex-1 font-medium truncate">{team.label}</span>
+                      {expandedTeams[team.id] ? <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />}
+                    </button>
+                    {expandedTeams[team.id] && (
+                      <div className="px-3 pb-2 pt-1 bg-muted/10 border-t border-border/20 space-y-1.5">
+                        {team.players.map(p => {
+                          const snap = getSnap(p.id);
+                          const before = snap?.ratingBefore;
+                          const after = snap?.ratingAfter;
+                          const delta = (before !== undefined && after !== undefined) ? after - before : undefined;
+                          const color = delta === undefined ? "text-muted-foreground" : delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground";
+                          return (
+                            <div key={p.id} className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] text-foreground truncate">{p.name}</span>
+                              {before !== undefined && (
+                                <span className={`text-[10px] font-mono shrink-0 ${color}`} data-testid={`text-rating-delta-${p.id}`}>
+                                  {after !== undefined
+                                    ? `${before}→${after} (${delta! > 0 ? "+" : ""}${delta})`
+                                    : `${before}`}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </CollapsibleContent>
       </Collapsible>

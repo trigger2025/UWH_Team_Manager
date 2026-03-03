@@ -48,33 +48,107 @@ function formatTime(mins: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
-function buildScheduleRounds(teamList: TournamentTeam[]): Array<{
-  games: Array<{ teamA: TournamentTeam; teamB: TournamentTeam }>;
-  bye?: TournamentTeam;
-}> {
-  const list: (TournamentTeam | null)[] = [...teamList];
-  if (list.length % 2 !== 0) list.push(null);
-  const n = list.length;
-  const rounds = [];
+// Circle-method round-robin. Returns rounds as arrays of [teamA, teamB] pairs.
+function generateRoundRobin(teams: TournamentTeam[]): TournamentTeam[][][] {
+  const list: (TournamentTeam | null)[] = [...teams];
+  if (list.length % 2 !== 0) list.push(null); // null = BYE placeholder
 
-  for (let round = 0; round < n - 1; round++) {
-    const games: Array<{ teamA: TournamentTeam; teamB: TournamentTeam }> = [];
-    let bye: TournamentTeam | undefined;
+  const totalRounds = list.length - 1;
+  const half = list.length / 2;
+  const rounds: TournamentTeam[][][] = [];
 
-    for (let i = 0; i < n / 2; i++) {
+  for (let round = 0; round < totalRounds; round++) {
+    const pairings: TournamentTeam[][] = [];
+    for (let i = 0; i < half; i++) {
       const a = list[i];
-      const b = list[n - 1 - i];
-      if (!a) { if (b) bye = b; }
-      else if (!b) { bye = a; }
-      else { games.push({ teamA: a, teamB: b }); }
+      const b = list[list.length - 1 - i];
+      if (a && b) pairings.push([a, b]);
+    }
+    rounds.push(pairings);
+    list.splice(1, 0, list.pop()!); // rotate: last → index 1
+  }
+  return rounds;
+}
+
+type ScheduleRow = {
+  round: number;
+  poolA: TournamentTeam[] | null;
+  poolB: TournamentTeam[] | null;
+  bye: TournamentTeam[];
+};
+
+function generateBalancedSchedule(teams: TournamentTeam[], useTwoPools: boolean): ScheduleRow[] {
+  if (teams.length === 3) useTwoPools = false;
+  const rounds = generateRoundRobin(teams);
+  const tracker: Record<string, { poolA: number; poolB: number; games: number }> = {};
+  teams.forEach(t => { tracker[t.id] = { poolA: 0, poolB: 0, games: 0 }; });
+
+  return rounds.map((pairings, roundIndex) => {
+    const used = new Set<string>();
+
+    if (!useTwoPools || pairings.length <= 1) {
+      const match = pairings[0] ?? null;
+      if (match) match.forEach(t => { tracker[t.id].games++; used.add(t.id); });
+      return { round: roundIndex, poolA: match, poolB: null, bye: teams.filter(t => !used.has(t.id)) };
     }
 
-    rounds.push({ games, bye });
-    // rotate: remove last, insert at index 1
-    list.splice(1, 0, list.pop()!);
-  }
+    let poolA: TournamentTeam[] | null = null;
+    let poolB: TournamentTeam[] | null = null;
 
-  return rounds;
+    pairings.forEach(match => {
+      const [t1, t2] = match;
+      const canGoA = tracker[t1.id].poolA <= tracker[t1.id].poolB && tracker[t2.id].poolA <= tracker[t2.id].poolB;
+      const canGoB = tracker[t1.id].poolB <= tracker[t1.id].poolA && tracker[t2.id].poolB <= tracker[t2.id].poolA;
+
+      if (!poolA && canGoA) {
+        poolA = match; tracker[t1.id].poolA++; tracker[t2.id].poolA++;
+      } else if (!poolB && canGoB) {
+        poolB = match; tracker[t1.id].poolB++; tracker[t2.id].poolB++;
+      } else if (!poolA) {
+        poolA = match; tracker[t1.id].poolA++; tracker[t2.id].poolA++;
+      } else {
+        poolB = match; tracker[t1.id].poolB++; tracker[t2.id].poolB++;
+      }
+      tracker[t1.id].games++; tracker[t2.id].games++;
+      used.add(t1.id); used.add(t2.id);
+    });
+
+    return { round: roundIndex, poolA, poolB, bye: teams.filter(t => !used.has(t.id)) };
+  });
+}
+
+function validateSchedule(schedule: ScheduleRow[], teams: TournamentTeam[], useTwoPools: boolean): boolean {
+  // 1. No team appears twice in same round
+  for (const slot of schedule) {
+    const ids: string[] = [];
+    if (slot.poolA) slot.poolA.forEach(t => ids.push(t.id));
+    if (slot.poolB) slot.poolB.forEach(t => ids.push(t.id));
+    if (new Set(ids).size !== ids.length) return false;
+  }
+  // 2. For 5 teams: each team has exactly 4 games and 1 bye
+  if (teams.length === 5) {
+    const games: Record<string, number> = {};
+    const byes: Record<string, number> = {};
+    teams.forEach(t => { games[t.id] = 0; byes[t.id] = 0; });
+    schedule.forEach(slot => {
+      if (slot.poolA) slot.poolA.forEach(t => games[t.id]++);
+      if (slot.poolB) slot.poolB.forEach(t => games[t.id]++);
+      slot.bye.forEach(t => byes[t.id]++);
+    });
+    if (teams.some(t => games[t.id] !== 4 || byes[t.id] !== 1)) return false;
+  }
+  // 3. For 2-pool mode: |poolA plays - poolB plays| <= 1 for every team
+  if (useTwoPools) {
+    const pA: Record<string, number> = {};
+    const pB: Record<string, number> = {};
+    teams.forEach(t => { pA[t.id] = 0; pB[t.id] = 0; });
+    schedule.forEach(slot => {
+      if (slot.poolA) slot.poolA.forEach(t => pA[t.id]++);
+      if (slot.poolB) slot.poolB.forEach(t => pB[t.id]++);
+    });
+    if (teams.some(t => Math.abs(pA[t.id] - pB[t.id]) > 1)) return false;
+  }
+  return true;
 }
 
 const SCHEDULE_STORAGE_KEY = "activeTournamentSchedule";
@@ -134,48 +208,30 @@ export default function TournamentPage() {
   const activePools: 1 | 2 = forceSinglePool ? 1 : schedulePools;
 
   function generateSchedule() {
-    const rounds = buildScheduleRounds(teams);
+    const useTwoPools = activePools === 2;
+    let schedule = generateBalancedSchedule(teams, useTwoPools);
+
+    // Validate; regenerate once if invalid; fallback to single pool if still invalid
+    if (!validateSchedule(schedule, teams, useTwoPools)) {
+      schedule = generateBalancedSchedule(teams, useTwoPools);
+      if (!validateSchedule(schedule, teams, useTwoPools)) {
+        schedule = generateBalancedSchedule(teams, false);
+      }
+    }
+
     const slotLen = scheduleDuration + scheduleTurnover;
     let t = parseTime(scheduleStartTime);
-    const slots: ScheduleSlot[] = [];
 
-    if (activePools === 1) {
-      // Each game is its own time slot; Bye = all non-playing teams that slot
-      rounds.forEach(round => {
-        round.games.forEach(game => {
-          const playing = new Set([game.teamA.id, game.teamB.id]);
-          const byeNames = teams.filter(tm => !playing.has(tm.id)).map(tm => tm.label);
-          slots.push({
-            time: formatTime(t),
-            poolA: `${game.teamA.label} vs ${game.teamB.label}`,
-            poolB: "–",
-            bye: byeNames.join(", ") || "–",
-          });
-          t += slotLen;
-        });
-      });
-    } else {
-      // Each ROUND is one time slot; first game → Pool A, second game → Pool B
-      rounds.forEach(round => {
-        const poolA = round.games[0]
-          ? `${round.games[0].teamA.label} vs ${round.games[0].teamB.label}`
-          : "–";
-        const poolB = round.games[1]
-          ? `${round.games[1].teamA.label} vs ${round.games[1].teamB.label}`
-          : "–";
-
-        // The round-robin rotation already computes which team has a bye each round
-        const byeLabel = round.bye ? round.bye.label : "–";
-
-        slots.push({
-          time: formatTime(t),
-          poolA,
-          poolB,
-          bye: byeLabel,
-        });
-        t += slotLen;
-      });
-    }
+    const slots: ScheduleSlot[] = schedule.map(slot => {
+      const time = formatTime(t);
+      t += slotLen;
+      return {
+        time,
+        poolA: slot.poolA ? `${slot.poolA[0].label} vs ${slot.poolA[1].label}` : "–",
+        poolB: slot.poolB ? `${slot.poolB[0].label} vs ${slot.poolB[1].label}` : "–",
+        bye: slot.bye.length > 0 ? slot.bye.map(b => b.label).join(", ") : "–",
+      };
+    });
 
     localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(slots));
     localStorage.setItem(OPTIONS_STORAGE_KEY, JSON.stringify({
