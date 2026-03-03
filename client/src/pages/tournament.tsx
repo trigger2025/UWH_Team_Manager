@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useApp } from "@/context/AppContext";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ interface ScheduleSlot {
   time: string;
   poolA: string;
   poolB: string;
+  bye: string;
 }
 
 function parseTime(str: string): number {
@@ -47,6 +48,37 @@ function formatTime(mins: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+function buildScheduleRounds(teamList: TournamentTeam[]): Array<{
+  games: Array<{ teamA: TournamentTeam; teamB: TournamentTeam }>;
+  bye?: TournamentTeam;
+}> {
+  const list: (TournamentTeam | null)[] = [...teamList];
+  if (list.length % 2 !== 0) list.push(null);
+  const n = list.length;
+  const rounds = [];
+
+  for (let round = 0; round < n - 1; round++) {
+    const games: Array<{ teamA: TournamentTeam; teamB: TournamentTeam }> = [];
+    let bye: TournamentTeam | undefined;
+
+    for (let i = 0; i < n / 2; i++) {
+      const a = list[i];
+      const b = list[n - 1 - i];
+      if (!a) { if (b) bye = b; }
+      else if (!b) { bye = a; }
+      else { games.push({ teamA: a, teamB: b }); }
+    }
+
+    rounds.push({ games, bye });
+    // rotate: remove last, insert at index 1
+    list.splice(1, 0, list.pop()!);
+  }
+
+  return rounds;
+}
+
+const SCHEDULE_STORAGE_KEY = "activeTournamentSchedule";
+
 export default function TournamentPage() {
   const { generationWorkspace, setTournamentFixtureResult, finaliseTournament, resetTournament } = useApp();
   const [, navigate] = useLocation();
@@ -57,6 +89,15 @@ export default function TournamentPage() {
   const [scheduleTurnover, setScheduleTurnover] = useState(3);
   const [schedulePools, setSchedulePools] = useState<1 | 2>(1);
   const [generatedSchedule, setGeneratedSchedule] = useState<ScheduleSlot[] | null>(null);
+  const scheduleRef = useRef<HTMLDivElement>(null);
+
+  // Load persisted schedule on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SCHEDULE_STORAGE_KEY);
+      if (saved) setGeneratedSchedule(JSON.parse(saved));
+    } catch {}
+  }, []);
 
   if (!tournament || !tournament.active) {
     return (
@@ -79,27 +120,76 @@ export default function TournamentPage() {
   const standings = getStandings(teams, fixtures);
 
   function generateSchedule() {
-    let t = parseTime(scheduleStartTime);
+    const rounds = buildScheduleRounds(teams);
     const slotLen = scheduleDuration + scheduleTurnover;
+    // Pool balance counters: track A/B play count per team
+    const poolCounts: Record<string, { A: number; B: number }> = {};
+    teams.forEach(t => { poolCounts[t.id] = { A: 0, B: 0 }; });
+
+    let t = parseTime(scheduleStartTime);
     const slots: ScheduleSlot[] = [];
+
     if (schedulePools === 1) {
-      fixtures.forEach(f => {
-        slots.push({ time: formatTime(t), poolA: `${f.teamA.label} vs ${f.teamB.label}`, poolB: "–" });
-        t += slotLen;
+      // Each game is its own time slot; BYE noted in the round's first slot
+      rounds.forEach(round => {
+        round.games.forEach((game, gi) => {
+          slots.push({
+            time: formatTime(t),
+            poolA: `${game.teamA.label} vs ${game.teamB.label}`,
+            poolB: "–",
+            bye: gi === 0 && round.bye ? round.bye.label : "–",
+          });
+          t += slotLen;
+        });
       });
     } else {
-      for (let i = 0; i < fixtures.length; i += 2) {
-        const a = fixtures[i];
-        const b = fixtures[i + 1];
+      // Each ROUND is one time slot; balance games across Pool A and Pool B
+      rounds.forEach(round => {
+        let poolA = "";
+        let poolB = "";
+
+        round.games.forEach(game => {
+          if (poolB) return; // already filled both pools
+          const aCount = (poolCounts[game.teamA.id]?.A ?? 0) + (poolCounts[game.teamB.id]?.A ?? 0);
+          const bCount = (poolCounts[game.teamA.id]?.B ?? 0) + (poolCounts[game.teamB.id]?.B ?? 0);
+          const assignToA = !poolA && aCount <= bCount;
+
+          if (assignToA) {
+            poolA = `${game.teamA.label} vs ${game.teamB.label}`;
+            poolCounts[game.teamA.id].A++;
+            poolCounts[game.teamB.id].A++;
+          } else if (!poolB) {
+            poolB = `${game.teamA.label} vs ${game.teamB.label}`;
+            poolCounts[game.teamA.id].B++;
+            poolCounts[game.teamB.id].B++;
+          }
+        });
+
         slots.push({
           time: formatTime(t),
-          poolA: a ? `${a.teamA.label} vs ${a.teamB.label}` : "–",
-          poolB: b ? `${b.teamA.label} vs ${b.teamB.label}` : "–",
+          poolA: poolA || "–",
+          poolB: poolB || "–",
+          bye: round.bye ? round.bye.label : "–",
         });
         t += slotLen;
-      }
+      });
     }
+
+    localStorage.setItem(SCHEDULE_STORAGE_KEY, JSON.stringify(slots));
     setGeneratedSchedule(slots);
+  }
+
+  async function exportSchedule() {
+    if (!scheduleRef.current) return;
+    const html2canvas = (await import("html2canvas")).default;
+    const canvas = await html2canvas(scheduleRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      const link = document.createElement("a");
+      link.download = "tournament-schedule.png";
+      link.href = URL.createObjectURL(blob);
+      link.click();
+    });
   }
 
   return (
@@ -126,7 +216,7 @@ export default function TournamentPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => { resetTournament(); navigate("/generate"); }}>
+              <AlertDialogAction onClick={() => { resetTournament(); localStorage.removeItem(SCHEDULE_STORAGE_KEY); setGeneratedSchedule(null); navigate("/generate"); }}>
                 Reset
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -292,28 +382,45 @@ export default function TournamentPage() {
                 Generate Schedule
               </Button>
               {generatedSchedule && (
-                <div className="rounded border border-border/40 overflow-hidden text-[10px]">
-                  <div className="grid grid-cols-[52px_1fr_1fr] bg-muted/30 border-b border-border/40">
-                    <span className="px-2 py-1.5 font-bold text-muted-foreground uppercase tracking-wide">Time</span>
-                    <span className="px-2 py-1.5 font-bold text-amber-400 uppercase tracking-wide">Pool A</span>
-                    {schedulePools === 2 && (
-                      <span className="px-2 py-1.5 font-bold text-violet-400 uppercase tracking-wide">Pool B</span>
-                    )}
-                  </div>
-                  {generatedSchedule.map((slot, i) => (
-                    <div
-                      key={i}
-                      className={`grid grid-cols-[52px_1fr_1fr] border-b border-border/20 last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}
-                      data-testid={`row-schedule-${i}`}
-                    >
-                      <span className="px-2 py-2 font-mono text-muted-foreground">{slot.time}</span>
-                      <span className="px-2 py-2 text-foreground leading-tight">{slot.poolA}</span>
+                <>
+                  <div ref={scheduleRef} className="rounded border border-border/40 overflow-hidden text-[10px]">
+                    {/* Header */}
+                    <div className={`grid bg-muted/30 border-b border-border/40 ${schedulePools === 2 ? "grid-cols-[48px_1fr_1fr_56px]" : "grid-cols-[48px_1fr_56px]"}`}>
+                      <span className="px-2 py-1.5 font-bold text-muted-foreground uppercase tracking-wide">Time</span>
+                      <span className="px-2 py-1.5 font-bold text-amber-400 uppercase tracking-wide">Pool A</span>
                       {schedulePools === 2 && (
-                        <span className="px-2 py-2 text-foreground leading-tight">{slot.poolB}</span>
+                        <span className="px-2 py-1.5 font-bold text-violet-400 uppercase tracking-wide">Pool B</span>
                       )}
+                      <span className="px-2 py-1.5 font-bold text-muted-foreground/60 uppercase tracking-wide">Bye</span>
                     </div>
-                  ))}
-                </div>
+                    {/* Rows */}
+                    {generatedSchedule.map((slot, i) => (
+                      <div
+                        key={i}
+                        className={`grid border-b border-border/20 last:border-0 ${schedulePools === 2 ? "grid-cols-[48px_1fr_1fr_56px]" : "grid-cols-[48px_1fr_56px]"} ${i % 2 === 0 ? "" : "bg-muted/10"}`}
+                        data-testid={`row-schedule-${i}`}
+                      >
+                        <span className="px-2 py-2 font-mono text-muted-foreground">{slot.time}</span>
+                        <span className="px-2 py-2 text-foreground leading-tight">{slot.poolA}</span>
+                        {schedulePools === 2 && (
+                          <span className="px-2 py-2 text-foreground leading-tight">{slot.poolB}</span>
+                        )}
+                        <span className="px-2 py-2 text-muted-foreground/60 leading-tight truncate">
+                          {slot.bye !== "–" ? slot.bye : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full gap-2 text-muted-foreground text-xs"
+                    onClick={exportSchedule}
+                    data-testid="button-export-schedule"
+                  >
+                    Export as Image
+                  </Button>
+                </>
               )}
             </CardContent>
           </Card>

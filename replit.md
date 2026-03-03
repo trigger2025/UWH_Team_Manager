@@ -66,6 +66,10 @@ Preferred communication style: Simple, everyday language.
 - **History**: On finalise, tournament is saved to `tournamentHistory[]` (separate `uwh_tournament_history` localStorage key) and the active tournament is cleared; navigates to /results
 - **Results Page Integration**: Completed Tournaments section appears at the bottom of Session History when history exists; each entry is a collapsible card showing date, team count, fixture count, winner badge, final standings (points), and all fixture outcomes. Each fixture row is expandable to reveal per-team player lists with `ratingBefore→ratingAfter (+delta)` rating change display
 - **Schedule Generator**: On the /tournament page, a Schedule section lets organisers set start time, game duration (minutes), turnover time (minutes), and 1 or 2 concurrent pools. Generates a time-based table showing which fixture plays when. In 2-pool mode, fixtures are paired side-by-side per time slot
+- **Round-Based 2-Pool Scheduling**: Schedule uses true round-robin rounds (`buildScheduleRounds`). In 1-pool mode, each game is its own time slot. In 2-pool mode, each ROUND is one time slot with two games running simultaneously — guaranteeing no team plays twice in the same slot. Games are distributed across Pool A/B using pool-balance counters
+- **BYE Column**: When the number of teams is odd, the schedule shows a "Bye" column identifying which team sits out each round
+- **Schedule Persistence**: Generated schedules are saved to `localStorage` key `activeTournamentSchedule` and reloaded on page mount; cleared when the tournament is reset
+- **Export to Image**: "Export as Image" button on tournament schedule uses html2canvas (scale 2x). "Export PNG" button on generate page exports the current teams view. Both download as PNG files
 - **Avg Rating on Match Cards**: Normal (non-tournament) match cards in /results show "Avg NNN" below the Black and White score labels when showRatings is enabled; computed from player ratingUsed values at generation time
 
 ## Two Pools Mode

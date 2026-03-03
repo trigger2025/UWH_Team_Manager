@@ -1,0 +1,225 @@
+/* =========================================================
+   PASS 19
+   - True round-based 2-pool scheduling (no double plays)
+   - Balanced pool distribution where possible
+   - BYE column added
+   - Schedule persistence
+   - Export teams & schedule to image
+========================================================= */
+
+
+/* =========================================================
+   1️⃣ TRUE ROUND ROBIN WITH ROUNDS
+========================================================= */
+
+function generateRoundRobinRounds(teams) {
+  const list = [...teams];
+  const rounds = [];
+
+  if (list.length % 2 !== 0) {
+    list.push({ name: "BYE" });
+  }
+
+  const n = list.length;
+
+  for (let round = 0; round < n - 1; round++) {
+    const pairings = [];
+
+    for (let i = 0; i < n / 2; i++) {
+      const teamA = list[i];
+      const teamB = list[n - 1 - i];
+
+      pairings.push({
+        teamA: teamA.name,
+        teamB: teamB.name
+      });
+    }
+
+    rounds.push(pairings);
+
+    // rotate
+    list.splice(1, 0, list.pop());
+  }
+
+  return rounds;
+}
+
+
+/* =========================================================
+   2️⃣ POOL BALANCED SCHEDULE GENERATOR
+========================================================= */
+
+function generateSchedule(teams, options) {
+  const rounds = generateRoundRobinRounds(teams);
+  const schedule = [];
+  const poolCounts = {}; // track pool usage
+
+  teams.forEach(t => {
+    poolCounts[t.name] = { A: 0, B: 0 };
+  });
+
+  let currentTime = parseTime(options.startTime);
+
+  rounds.forEach((round, roundIndex) => {
+    let poolA = null;
+    let poolB = null;
+    const byes = [];
+
+    const validGames = round.filter(g => g.teamA !== "BYE" && g.teamB !== "BYE");
+    const byeGame = round.find(g => g.teamA === "BYE" || g.teamB === "BYE");
+
+    if (byeGame) {
+      const sitting = byeGame.teamA === "BYE"
+        ? byeGame.teamB
+        : byeGame.teamA;
+      byes.push(sitting);
+    }
+
+    if (options.pools === 1) {
+      poolA = validGames[0]
+        ? `${validGames[0].teamA} vs ${validGames[0].teamB}`
+        : "";
+    }
+
+    if (options.pools === 2) {
+      // distribute games evenly across A/B pools
+      validGames.forEach((game, index) => {
+        const aCount =
+          poolCounts[game.teamA].A +
+          poolCounts[game.teamB].A;
+
+        const bCount =
+          poolCounts[game.teamA].B +
+          poolCounts[game.teamB].B;
+
+        const assignToA = aCount <= bCount;
+
+        if (!poolA && assignToA) {
+          poolA = `${game.teamA} vs ${game.teamB}`;
+          poolCounts[game.teamA].A++;
+          poolCounts[game.teamB].A++;
+        } else if (!poolB) {
+          poolB = `${game.teamA} vs ${game.teamB}`;
+          poolCounts[game.teamA].B++;
+          poolCounts[game.teamB].B++;
+        }
+      });
+    }
+
+    schedule.push({
+      time: formatTime(currentTime),
+      poolA: poolA || "-",
+      poolB: poolB || "-",
+      bye: byes.length > 0 ? byes.join(", ") : "-"
+    });
+
+    currentTime += (options.gameDuration + options.turnover);
+  });
+
+  persistSchedule(schedule);
+  return schedule;
+}
+
+
+/* =========================================================
+   3️⃣ PERSISTENCE
+========================================================= */
+
+function persistSchedule(schedule) {
+  localStorage.setItem("activeTournamentSchedule", JSON.stringify(schedule));
+}
+
+function loadPersistedSchedule() {
+  const data = localStorage.getItem("activeTournamentSchedule");
+  return data ? JSON.parse(data) : null;
+}
+
+function clearPersistedSchedule() {
+  localStorage.removeItem("activeTournamentSchedule");
+}
+
+
+/* =========================================================
+   4️⃣ RENDER SCHEDULE (WITH BYE COLUMN)
+========================================================= */
+
+function renderSchedule(schedule) {
+  if (!schedule || schedule.length === 0) {
+    return "<p>No schedule generated.</p>";
+  }
+
+  return `
+    <div class="schedule-table">
+      <div class="schedule-header">
+        <span>Time</span>
+        <span>Pool A</span>
+        <span>Pool B</span>
+        <span>Bye</span>
+      </div>
+      ${schedule.map(slot => `
+        <div class="schedule-row">
+          <span>${slot.time}</span>
+          <span>${slot.poolA}</span>
+          <span>${slot.poolB}</span>
+          <span>${slot.bye}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+
+/* =========================================================
+   5️⃣ EXPORT TO IMAGE (TEAMS + SCHEDULE)
+========================================================= */
+
+function exportElementToImage(elementId, filename) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+
+  html2canvas(element).then(canvas => {
+    canvas.toBlob(blob => {
+      const link = document.createElement("a");
+      link.download = filename;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+    });
+  });
+}
+
+
+/* =========================================================
+   6️⃣ EXPORT GENERATED TEAMS WITH OPTIONS
+========================================================= */
+
+function confirmTeamExport() {
+  const showRatings = confirm("Show player ratings on export?");
+  const showPositions = confirm("Show player positions on export?");
+
+  const container = document.getElementById("generated-teams");
+
+  container.querySelectorAll(".player-line").forEach(line => {
+    const rating = line.querySelector(".rating");
+    const position = line.querySelector(".position");
+
+    if (rating) rating.style.display = showRatings ? "inline" : "none";
+    if (position) position.style.display = showPositions ? "inline" : "none";
+  });
+
+  exportElementToImage("generated-teams", "generated-teams.png");
+
+  // restore after export
+  setTimeout(() => {
+    container.querySelectorAll(".rating, .position")
+      .forEach(el => el.style.display = "");
+  }, 500);
+}
+
+
+/* =========================================================
+   7️⃣ EXPORT SCHEDULE
+========================================================= */
+
+function exportScheduleImage() {
+  exportElementToImage("schedule-container", "tournament-schedule.png");
+}

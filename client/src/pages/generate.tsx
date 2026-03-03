@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useApp } from "@/context/AppContext";
 import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, FORMATION_ROLES, createMatchTeamSnapshot, generateMultipleTeams } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
@@ -79,6 +79,21 @@ export default function GeneratePage() {
     tournamentTeamCount = 3,
     tournament
   } = generationWorkspace;
+
+  const teamsRef = useRef<HTMLDivElement>(null);
+
+  async function exportTeams() {
+    if (!teamsRef.current) return;
+    const html2canvas = (await import("html2canvas")).default;
+    const canvas = await html2canvas(teamsRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
+    canvas.toBlob(blob => {
+      if (!blob) return;
+      const link = document.createElement("a");
+      link.download = "generated-teams.png";
+      link.href = URL.createObjectURL(blob);
+      link.click();
+    });
+  }
 
   // Filter to only show players (no "active" filter during generation per requirements)
   const allPlayers = players;
@@ -1076,7 +1091,7 @@ export default function GeneratePage() {
               className="space-y-4"
             >
               {/* Team Cards */}
-              <div className="grid grid-cols-1 gap-3">
+              <div ref={teamsRef} className="grid grid-cols-1 gap-3">
                 {/* Black Team */}
                 <TeamCard
                   team={generatedTeams.black}
@@ -1104,15 +1119,25 @@ export default function GeneratePage() {
 
               {/* Action Buttons */}
               <div className="flex flex-col gap-2">
-                <Button 
-                  variant="outline" 
-                  className="w-full h-10 rounded-xl gap-2 text-sm"
-                  onClick={handleClearTeams}
-                  data-testid="button-reselect"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Reselect Players
-                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="h-10 rounded-xl gap-2 text-sm"
+                    onClick={handleClearTeams}
+                    data-testid="button-reselect"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Reselect
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="h-10 rounded-xl gap-2 text-sm text-muted-foreground"
+                    onClick={exportTeams}
+                    data-testid="button-export-teams"
+                  >
+                    Export PNG
+                  </Button>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Button 
                     variant="secondary"
