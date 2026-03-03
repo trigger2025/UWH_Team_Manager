@@ -1,0 +1,97 @@
+/* ============================================================
+   FIX PASS 16.1 – TOURNAMENT NAVIGATION
+   Adds persistent access to active tournament
+   ============================================================ */
+
+
+/* ================================
+   1. NAVIGATION REGISTRY
+   ================================ */
+
+if (!state.navigation) {
+  state.navigation = {
+    currentTab: "generate"
+  };
+}
+
+function navigateTo(tabName) {
+  state.navigation.currentTab = tabName;
+  renderApp();
+}
+
+
+/* ================================
+   2. SHOW TOURNAMENT TAB IF ACTIVE
+   ================================ */
+
+function getVisibleTabs() {
+  const baseTabs = ["roster", "generate", "results", "settings"];
+
+  if (state.tournament && state.tournament.active) {
+    baseTabs.push("tournament");
+  }
+
+  return baseTabs;
+}
+
+
+/* ================================
+   3. TOURNAMENT TAB BUTTON HANDLER
+   ================================ */
+
+function renderBottomTabs() {
+  const tabs = getVisibleTabs();
+
+  tabs.forEach(tab => {
+    renderTabButton({
+      label: tab.charAt(0).toUpperCase() + tab.slice(1),
+      active: state.navigation.currentTab === tab,
+      onClick: () => navigateTo(tab)
+    });
+  });
+}
+
+
+/* ================================
+   4. AUTO-REDIRECT IF TOURNAMENT ACTIVE
+   ================================ */
+
+function renderApp() {
+  const current = state.navigation.currentTab;
+
+  if (current === "tournament" && state.tournament?.active) {
+    renderTournament();
+    return;
+  }
+
+  if (current === "generate") {
+    renderGenerate();
+    return;
+  }
+
+  if (current === "results") {
+    renderResults();
+    return;
+  }
+
+  if (current === "roster") {
+    renderRoster();
+    return;
+  }
+
+  if (current === "settings") {
+    renderSettings();
+    return;
+  }
+}
+
+
+/* ================================
+   5. OPTIONAL: AUTO-HIDE TAB AFTER FINALISE
+   ================================ */
+
+function closeTournament() {
+  state.tournament.active = false;
+  state.tournament.finalised = false;
+  navigateTo("generate");
+}
