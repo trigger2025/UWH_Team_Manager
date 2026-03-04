@@ -28,6 +28,21 @@ Preferred communication style: Simple, everyday language.
 ## Player Management
 - **Ratings**: 0-1000 integer scale with optional off-hand ratings.
 - **Tags**: Global tag system with autocomplete, normalization, and deduplication.
+
+## Universal Filter Bar (`PlayerFilterBar`)
+- **Component**: `client/src/components/player-filter-bar.tsx` — reusable filter/sort bar used across the app.
+- **Controls**: Text search (partial, case-insensitive), tag multi-select, position multi-select (Forward/Centre/Half Back/Centre Back/Wing/Back), sort dropdown.
+- **Sort options**: Name A–Z/Z–A, Rating High→Low/Low→High; Stats page adds Most Wins, Highest Win %, Biggest Rating Gain, Longest Win/Losing Streak.
+- **Placement**: Players tab, Rotation tab, Generate attending selection, Generate preset player selector, Stats tab.
+- **Behaviour**: Filters are local to each tab/view, reset on leave, purely visual with no data mutation.
+
+## Statistics Page
+- **Route**: `/stats` — replaces placeholder, full derived stats from completed match history.
+- **Player Stats Table**: Name, Rating, Games, W/D/L, Win%, Net Δ, Current Streak (W3/L2/–); rows expand to show sparkline, last 5 results, best win streak, worst loss streak.
+- **Streak Tracking**: currentWinStreak, currentLossStreak, bestWinStreak, worstLossStreak derived from ordered match results per player.
+- **Rating Trend**: Difference from 10 matches ago (or earliest recorded).
+- **Leaderboard Selector**: Dropdown to show one of 7 fun leaderboards (Sharks, On Fire, Rising Stars, Serial Winners, Cold Spell Club, Rebuild Season, Unlucky Legends) — each shows top 10 entries.
+- **FilterBar**: Integrated — search, tag, position, and 5 stats-specific sort options.
 - **Formation Preferences**: Per-formation position preferences for various formations (e.g., 3-3, 1-3-2).
 
 ## Team Generation System

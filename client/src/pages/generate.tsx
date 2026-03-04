@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useApp } from "@/context/AppContext";
 import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, FORMATION_ROLES, createMatchTeamSnapshot, generateMultipleTeams, getEffectiveRating } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
@@ -30,6 +30,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player, TournamentTeam } from "@shared/schema";
 import { useLocation } from "wouter";
+import { PlayerFilterBar, FilterState, defaultFilterState, applyPlayerFilter } from "@/components/player-filter-bar";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
   standard: "Standard",
@@ -45,7 +46,8 @@ const FORMATION_LABELS: Record<FormationType, string> = {
 
 export default function GeneratePage() {
   const { 
-    players, 
+    players,
+    savedTags,
     generationWorkspace,
     updateWorkspace,
     clearWorkspace,
@@ -70,6 +72,10 @@ export default function GeneratePage() {
   const [presetTwoPool, setPresetTwoPool] = useState(false);
   const [presetPoolTarget, setPresetPoolTarget] = useState<"A" | "B">("A");
   const [presetLeftoverCount, setPresetLeftoverCount] = useState(0);
+
+  // Filter state (local to tab, visual only)
+  const [attendFilter, setAttendFilter] = useState<FilterState>(defaultFilterState("name-asc"));
+  const [presetFilter, setPresetFilter] = useState<FilterState>(defaultFilterState("name-asc"));
 
   const { 
     mode, 
@@ -112,6 +118,14 @@ export default function GeneratePage() {
 
   // Filter to only show players (no "active" filter during generation per requirements)
   const allPlayers = players;
+
+  // Visual filter for attending selection (does not affect actual selection state)
+  const displayPlayers = useMemo(() => applyPlayerFilter(allPlayers, attendFilter), [allPlayers, attendFilter]);
+  // Visual filter for preset selector (does not affect actual preset state)
+  const displayPresetPlayers = useMemo(() => applyPlayerFilter(
+    allPlayers.filter(p => selectedPlayerIds.includes(p.id)),
+    presetFilter
+  ), [allPlayers, selectedPlayerIds, presetFilter]);
 
   const togglePlayer = (id: number) => {
     const newIds = selectedPlayerIds.includes(id) 
@@ -951,9 +965,18 @@ export default function GeneratePage() {
                     </div>
                   </div>
                 </CardHeader>
+                <div className="px-4 pb-2">
+                  <PlayerFilterBar
+                    filter={attendFilter}
+                    onChange={setAttendFilter}
+                    availableTags={savedTags || []}
+                    placeholder="Search players..."
+                    data-testid="attend-filter"
+                  />
+                </div>
                 <CardContent className="px-4 pb-3 max-h-[40vh] overflow-y-auto">
                   <div className="space-y-1">
-                    {allPlayers.map(player => {
+                    {displayPlayers.map(player => {
                       const isSelected = selectedPlayerIds.includes(player.id);
                       const hasOffHand = player.weakHandEnabled && player.weakHandRating !== null;
                       const playerPool = poolAssignments[player.id];
@@ -1043,10 +1066,15 @@ export default function GeneratePage() {
                         </div>
                       );
                     })}
-                    {allPlayers.length === 0 && (
+                    {displayPlayers.length === 0 && allPlayers.length === 0 && (
                       <div className="text-center py-6 text-muted-foreground">
                         <p className="text-sm">No players in roster.</p>
                         <p className="text-xs">Add players first.</p>
+                      </div>
+                    )}
+                    {displayPlayers.length === 0 && allPlayers.length > 0 && (
+                      <div className="text-center py-4 text-muted-foreground">
+                        <p className="text-sm">No players match filters.</p>
                       </div>
                     )}
                   </div>
@@ -1105,9 +1133,18 @@ export default function GeneratePage() {
                       )}
                     </div>
                   </CardHeader>
+                  <div className="px-4 pb-2">
+                    <PlayerFilterBar
+                      filter={presetFilter}
+                      onChange={setPresetFilter}
+                      availableTags={savedTags || []}
+                      placeholder="Search selected players..."
+                      data-testid="preset-filter"
+                    />
+                  </div>
                   <CardContent className="px-4 pb-3 max-h-[30vh] overflow-y-auto">
                     <div className="space-y-1">
-                      {players.filter(p => selectedPlayerIds.includes(p.id)).map(player => {
+                      {displayPresetPlayers.map(player => {
                         const isPreset = presetPlayerIds.includes(player.id);
                         return (
                           <div

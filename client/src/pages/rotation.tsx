@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RefreshCw, Pencil } from "lucide-react";
 import { Player, AttendanceTracking, PoolTracking, DEFAULT_ATTENDANCE_TRACKING, DEFAULT_POOL_TRACKING } from "@shared/schema";
+import { PlayerFilterBar, FilterState, defaultFilterState, applyPlayerFilter } from "@/components/player-filter-bar";
 
 type Tab = "attendance" | "pool";
 
@@ -66,11 +67,12 @@ interface EditModalState {
 }
 
 export default function RotationPage() {
-  const { players, markAttendanceAllowed, markAttendanceDenied, recordPoolPlay, updateRotationCounters } = useApp();
+  const { players, savedTags, markAttendanceAllowed, markAttendanceDenied, recordPoolPlay, updateRotationCounters } = useApp();
   const [tab, setTab] = useState<Tab>("attendance");
   const [editModal, setEditModal] = useState<EditModalState | null>(null);
+  const [filter, setFilter] = useState<FilterState>(defaultFilterState("name-asc"));
 
-  const activePlayers = players.filter(p => p.active).sort((a, b) => a.name.localeCompare(b.name));
+  const activePlayers = applyPlayerFilter(players.filter(p => p.active), filter);
 
   function openEdit(player: Player) {
     setEditModal({
@@ -106,10 +108,17 @@ export default function RotationPage() {
   return (
     <div className="min-h-screen bg-background pb-24">
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur border-b border-border/50 px-4 py-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-3">
           <RefreshCw className="h-5 w-5 text-primary" />
           <h1 className="font-bold text-lg">Rotation</h1>
         </div>
+        <PlayerFilterBar
+          filter={filter}
+          onChange={setFilter}
+          availableTags={savedTags || []}
+          placeholder="Search players..."
+          data-testid="rotation-filter"
+        />
       </div>
 
       {/* Tab switcher */}

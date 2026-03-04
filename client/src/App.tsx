@@ -10,7 +10,7 @@ import GeneratePage from "@/pages/generate";
 import ResultsPage from "@/pages/results";
 import SettingsPage from "@/pages/settings";
 import TournamentPage from "@/pages/tournament";
-import { StatsPage } from "@/pages/placeholders";
+import StatsPage from "@/pages/stats";
 import RotationPage from "@/pages/rotation";
 import NotFound from "@/pages/not-found";
 

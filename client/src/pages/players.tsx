@@ -7,7 +7,6 @@ import { Switch } from "@/components/ui/switch";
 import { 
   Trash2, 
   Edit, 
-  Search, 
   MoreVertical,
   User,
   Plus,
@@ -23,15 +22,15 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { Player } from "@shared/schema";
+import { PlayerFilterBar, FilterState, defaultFilterState, applyPlayerFilter } from "@/components/player-filter-bar";
 
 export default function PlayersPage() {
-  const { players, updatePlayer, deletePlayer, visibilitySettings } = useApp();
+  const { players, updatePlayer, deletePlayer, visibilitySettings, savedTags } = useApp();
   const { showRatings = true, showPositions = true } = visibilitySettings || {};
-  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<FilterState>(defaultFilterState("name-asc"));
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
   const [playerToDelete, setPlayerToDelete] = useState<Player | null>(null);
   
@@ -42,9 +41,7 @@ export default function PlayersPage() {
     }
   };
 
-  const filteredPlayers = players
-    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filteredPlayers = applyPlayerFilter(players, filter);
 
   const handleToggleActive = (id: number, active: boolean) => {
     updatePlayer(id, { active });
@@ -70,15 +67,12 @@ export default function PlayersPage() {
           </div>
         </div>
         
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search players..." 
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-card border-none ring-1 ring-white/10 focus:ring-primary/50"
-          />
-        </div>
+        <PlayerFilterBar
+          filter={filter}
+          onChange={setFilter}
+          availableTags={savedTags || []}
+          data-testid="players-filter"
+        />
       </div>
 
       {/* List */}

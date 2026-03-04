@@ -1,0 +1,222 @@
+==============================
+PASS 31 – STATS EXPANSION + UNIVERSAL FILTER
+(REVISED)
+==============================
+
+GOALS:
+1) Extend existing Stats tab (do NOT create new tab).
+2) Add selectable Top/Bottom lists.
+3) Add losing streak tracking.
+4) Add universal search/filter/sort across all player lists.
+5) No impact to rating logic or generation systems.
+
+---------------------------------------
+PART 1️⃣ – STATS TAB (EXTEND EXISTING)
+---------------------------------------
+
+IMPORTANT:
+Use existing Stats tab structure.
+Do NOT replace layout entirely.
+Enhance it.
+
+Stats remain DERIVED from results history only.
+No stat storage.
+
+---------------------------------------
+PLAYER STAT CALCULATIONS
+---------------------------------------
+
+For each player (from finalised results only):
+
+gamesPlayed
+wins
+losses
+draws
+
+winRate =
+    wins / gamesPlayed (if > 0)
+
+totalRatingChange =
+    sum of ratingDelta from finalised matches
+
+currentRating =
+    player.rating (already stored)
+
+ratingTrend =
+    currentRating minus rating
+    from 10 matches ago
+    (or first recorded match if <10)
+
+---------------------------------------
+NEW: STREAK TRACKING
+---------------------------------------
+
+For each player:
+
+currentWinStreak =
+    consecutive wins counting backward from most recent result
+
+currentLossStreak =
+    consecutive losses counting backward
+
+bestWinStreak =
+    highest consecutive wins across history
+
+worstLossStreak =
+    highest consecutive losses across history
+
+---------------------------------------
+MAIN STATS TABLE (IN STATS TAB)
+---------------------------------------
+
+Columns:
+
+Name
+Current Rating
+Games
+W
+D
+L
+Win %
+Net Rating Δ
+Current Streak
+
+Streak Display:
+W3 = 3 win streak
+L2 = 2 loss streak
+- = none
+
+Clicking player row expands:
+
+• Rating over time graph
+• Last 5 results summary
+• Best win streak
+• Worst loss streak
+• Total A pool games
+• Total B pool games
+
+---------------------------------------
+PART 2️⃣ – SELECTABLE FUN LISTS
+---------------------------------------
+
+DO NOT show all lists at once.
+
+Add dropdown selector:
+
+"View Leaderboard"
+
+Options:
+
+🏆 "The Sharks"  
+Top 10 Highest Rated
+
+🔥 "On Fire"  
+Top 10 Win Streak (current)
+
+📈 "Rising Stars"  
+Top 10 Rating Growth (last 20 games)
+
+🎯 "Serial Winners"  
+Most Total Wins
+
+🧊 "Cold Spell Club"  
+Longest Current Losing Streak
+
+📉 "Rebuild Season"  
+Largest Rating Drop (last 20 games)
+
+🐢 "Unlucky Legends"  
+Most Losses
+
+Selecting one renders ONLY that list below.
+
+Lists sortable by clicking column headers.
+
+---------------------------------------
+PART 3️⃣ – UNIVERSAL SEARCH / FILTER SYSTEM
+---------------------------------------
+
+Reusable filter component added to:
+
+• Players tab
+• Attending selection
+• Stats tab table
+• Rotations tab
+• Preset player selector
+
+---------------------------------------
+FILTER BAR COMPONENT
+---------------------------------------
+
+Contains:
+
+Search field (text input)
+Tag filter (multi-select dropdown)
+Position filter (multi-select dropdown)
+Sort dropdown
+
+---------------------------------------
+SEARCH
+---------------------------------------
+
+Case insensitive.
+Partial match.
+
+---------------------------------------
+TAG FILTER
+---------------------------------------
+
+Uses tag list from Settings tab.
+
+If tags selected:
+Player must contain ANY selected tag.
+
+---------------------------------------
+POSITION FILTER
+---------------------------------------
+
+Selectable:
+F, C, HB, CB, W, B
+
+Match main OR alternate preference.
+
+---------------------------------------
+SORT OPTIONS
+---------------------------------------
+
+Name A-Z
+Name Z-A
+Rating High → Low
+Rating Low → High
+
+Stats tab adds:
+Most Wins
+Highest Win %
+Biggest Rating Gain
+Longest Win Streak
+Longest Losing Streak
+
+---------------------------------------
+FILTER BEHAVIOUR
+---------------------------------------
+
+Filters are LOCAL to each tab.
+They reset when leaving the tab.
+
+Purely visual.
+No data mutation.
+
+---------------------------------------
+PART 4️⃣ – SAFETY
+---------------------------------------
+
+• Deleting results automatically updates stats.
+• Rating toggle still controls rating visibility.
+• No modification to rating math.
+• No scheduling changes.
+• No rotation logic changes.
+• No generation logic changes.
+
+---------------------------------------
+END PASS 31
+---------------------------------------
