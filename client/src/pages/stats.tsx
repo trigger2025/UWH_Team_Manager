@@ -14,6 +14,7 @@ interface MatchResult {
   date: string;
   outcome: "win" | "loss" | "draw";
   ratingDelta: number;
+  ratingBefore: number;
   ratingAfter: number;
   team: "Black" | "White";
 }
@@ -34,6 +35,7 @@ interface PlayerStats {
   bestWinStreak: number;
   worstLossStreak: number;
   matchResults: MatchResult[];
+  ratingHistory: number[];
 }
 
 // ── Stat Computation ───────────────────────────────────────────────────────────
@@ -65,6 +67,7 @@ function computeStats(players: Player[], matches: Match[]): PlayerStats[] {
           date: String(match.date),
           outcome,
           ratingDelta: delta,
+          ratingBefore: snap.ratingBefore ?? 0,
           ratingAfter: snap.ratingAfter ?? 0,
           team: teamName,
         });
@@ -87,9 +90,26 @@ function computeStats(players: Player[], matches: Match[]): PlayerStats[] {
     const winRate = gamesPlayed > 0 ? wins / gamesPlayed : 0;
     const totalRatingChange = results.reduce((sum, r) => sum + r.ratingDelta, 0);
 
-    const recent10Start = Math.max(0, results.length - 10);
-    const oldRating = results.length > 0 ? (results[recent10Start].ratingAfter - results[recent10Start].ratingDelta) : player.rating;
-    const ratingTrend = player.rating - oldRating;
+    // Build rating history from ratingBefore of first match + cumulative deltas
+    let ratingHistory: number[] = [];
+    if (results.length > 0) {
+      let running = results[0].ratingBefore;
+      ratingHistory.push(running);
+      for (const r of results) {
+        running += r.ratingDelta;
+        ratingHistory.push(running);
+      }
+    }
+
+    // 5-match trend: compare current rating to rating before last 5 matches
+    let ratingTrend = 0;
+    if (ratingHistory.length >= 2) {
+      const current = ratingHistory[ratingHistory.length - 1];
+      const fiveAgo = ratingHistory.length >= 6
+        ? ratingHistory[ratingHistory.length - 6]
+        : ratingHistory[0];
+      ratingTrend = current - fiveAgo;
+    }
 
     let currentWinStreak = 0;
     let currentLossStreak = 0;
@@ -134,36 +154,30 @@ function computeStats(players: Player[], matches: Match[]): PlayerStats[] {
       bestWinStreak,
       worstLossStreak,
       matchResults: results,
+      ratingHistory,
     };
   });
 }
 
 // ── Sparkline SVG ──────────────────────────────────────────────────────────────
 
-function Sparkline({ results }: { results: MatchResult[] }) {
-  if (results.length < 2) return <span className="text-xs text-muted-foreground">–</span>;
+function Sparkline({ history }: { history: number[] }) {
+  if (history.length < 2) return <span className="text-xs text-muted-foreground">–</span>;
 
-  const ratings = results.map((r, i) => ({
-    x: i,
-    y: r.ratingAfter,
-  }));
-
-  const minY = Math.min(...ratings.map(r => r.y));
-  const maxY = Math.max(...ratings.map(r => r.y));
+  const minY = Math.min(...history);
+  const maxY = Math.max(...history);
   const rangeY = maxY - minY || 1;
   const W = 80;
   const H = 28;
   const pad = 2;
 
-  const points = ratings.map((r, i) => {
-    const x = pad + (i / (ratings.length - 1)) * (W - pad * 2);
-    const y = H - pad - ((r.y - minY) / rangeY) * (H - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  const points = history.map((y, i) => {
+    const x = pad + (i / (history.length - 1)) * (W - pad * 2);
+    const py = H - pad - ((y - minY) / rangeY) * (H - pad * 2);
+    return `${x.toFixed(1)},${py.toFixed(1)}`;
   }).join(" ");
 
-  const lastY = ratings[ratings.length - 1].y;
-  const firstY = ratings[0].y;
-  const color = lastY >= firstY ? "#22c55e" : "#ef4444";
+  const color = history[history.length - 1] >= history[0] ? "#22c55e" : "#ef4444";
 
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="shrink-0">
@@ -434,15 +448,15 @@ export default function StatsPage() {
                   {expanded && (
                     <div className="border-t border-border/30 px-3 py-3 space-y-3 bg-background/40">
                       {/* Sparkline */}
-                      {stat.matchResults.length >= 2 && (
+                      {stat.ratingHistory.length >= 2 && (
                         <div className="flex items-center gap-3">
                           <div className="flex-1 min-w-0">
                             <p className="text-[10px] text-muted-foreground mb-1">Rating over time</p>
-                            <Sparkline results={stat.matchResults} />
+                            <Sparkline history={stat.ratingHistory} />
                           </div>
                           {showRatings && (
                             <div className="text-right">
-                              <p className="text-[10px] text-muted-foreground">Trend (10 games)</p>
+                              <p className="text-[10px] text-muted-foreground">Form (Last 5)</p>
                               <span className={`text-sm font-bold ${stat.ratingTrend > 0 ? "text-green-400" : stat.ratingTrend < 0 ? "text-red-400" : "text-muted-foreground"}`}>
                                 {stat.ratingTrend > 0 ? <TrendingUp className="inline h-3.5 w-3.5 mr-0.5" /> : stat.ratingTrend < 0 ? <TrendingDown className="inline h-3.5 w-3.5 mr-0.5" /> : <Minus className="inline h-3.5 w-3.5 mr-0.5" />}
                                 {stat.ratingTrend > 0 ? "+" : ""}{stat.ratingTrend}

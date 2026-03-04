@@ -1,0 +1,118 @@
+==============================
+PASS 32 – STATS FIX
+==============================
+
+OBJECTIVE:
+Fix:
+• Flat rating graph
+• Incorrect trend value (+617 bug)
+• Use 5-match trend (short-term form)
+
+No changes to:
+• Results system
+• Rating calculations
+• Database structure
+• Any other tabs
+
+---------------------------------------
+1️⃣ FIX RATING HISTORY RECONSTRUCTION
+---------------------------------------
+
+In Stats tab player calculation logic:
+
+Replace existing history build logic with:
+
+function buildRatingHistory(playerId):
+
+    const matches = getFinalisedMatchesForPlayer(playerId)
+        .sortBy(match.dateAscending)
+
+    if matches.length === 0:
+        return []
+
+    let history = []
+
+    // Start from rating before first recorded match
+    let runningRating = matches[0].ratingBefore
+
+    history.push(runningRating)
+
+    for each match in matches:
+        runningRating += match.ratingDelta
+        history.push(runningRating)
+
+    return history
+
+IMPORTANT:
+• Use stored ratingBefore from match snapshot
+• DO NOT use current player.rating as baseline
+• DO NOT recalc rating from scratch
+• Must be chronological order
+
+---------------------------------------
+2️⃣ FIX TREND CALCULATION (5 MATCH TREND)
+---------------------------------------
+
+Replace trend logic with:
+
+function calculateTrend(history):
+
+    if history.length < 2:
+        return 0
+
+    const currentRating = history[history.length - 1]
+
+    if history.length >= 6:
+        const fiveMatchesAgo = history[history.length - 6]
+        return currentRating - fiveMatchesAgo
+    else:
+        const firstRating = history[0]
+        return currentRating - firstRating
+
+Explanation:
+• history includes starting rating
+• history.length - 6 = rating BEFORE last 5 matches
+
+---------------------------------------
+3️⃣ UPDATE LABEL
+---------------------------------------
+
+Change:
+
+"Trend (10 games)"
+
+To:
+
+"Form (Last 5)"
+
+---------------------------------------
+4️⃣ GRAPH FIX
+---------------------------------------
+
+Graph must now use:
+
+history array returned from buildRatingHistory()
+
+Plot:
+x-axis = match index
+y-axis = rating value from history
+
+This will now produce:
+• Upward curves for gain
+• Downward curves for loss
+• Flat only if truly no change
+
+---------------------------------------
+5️⃣ SAFETY CHECKS
+---------------------------------------
+
+Ensure:
+• No mutation of player.rating
+• Only finalised matches included
+• Deleting a result automatically updates graph
+• Editable results still safe
+• Performance unaffected
+
+---------------------------------------
+END PASS 32
+---------------------------------------
