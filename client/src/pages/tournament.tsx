@@ -292,6 +292,17 @@ export default function TournamentPage() {
   const [schedulePools, setSchedulePools] = useState<1 | 2>(1);
   const [generatedSchedule, setGeneratedSchedule] = useState<ScheduleSlot[] | null>(null);
   const scheduleRef = useRef<HTMLDivElement>(null);
+  const teamsRef = useRef<HTMLDivElement>(null);
+
+  async function exportTeams() {
+    if (!teamsRef.current) return;
+    const html2canvas = (await import("html2canvas")).default;
+    const canvas = await html2canvas(teamsRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
+    const link = document.createElement("a");
+    link.download = "tournament-teams.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
 
   // Standings expansion + player editing state
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
@@ -452,7 +463,18 @@ export default function TournamentPage() {
         {/* Standings (always shown, expandable for player editing when not finalised) */}
         {standings.length > 0 && (
           <div className="space-y-3">
-            <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">Standings</h2>
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Standings</h2>
+              <button
+                onClick={exportTeams}
+                className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="button-export-teams"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export
+              </button>
+            </div>
+            <div ref={teamsRef} className="bg-background">
             <Card className="border-border/50">
               <CardContent className="px-0 py-0">
                 <div className="divide-y divide-border/30">
@@ -606,6 +628,7 @@ export default function TournamentPage() {
                 </div>
               </CardContent>
             </Card>
+            </div>
           </div>
         )}
 

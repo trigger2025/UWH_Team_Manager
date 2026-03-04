@@ -51,13 +51,9 @@ export default function ResultsPage() {
   const [blackScore, setBlackScore] = useState("");
   const [whiteScore, setWhiteScore] = useState("");
   
-  // Pending match scores (for locked teams from Generate page)
+  // Pending match scores (for locked teams from Generate page — 1 pool only)
   const [pendingBlackScore, setPendingBlackScore] = useState("");
   const [pendingWhiteScore, setPendingWhiteScore] = useState("");
-  const [pendingPoolABlackScore, setPendingPoolABlackScore] = useState("");
-  const [pendingPoolAWhiteScore, setPendingPoolAWhiteScore] = useState("");
-  const [pendingPoolBBlackScore, setPendingPoolBBlackScore] = useState("");
-  const [pendingPoolBWhiteScore, setPendingPoolBWhiteScore] = useState("");
 
   // Handle saving a pending match (standard mode)
   const handleSavePendingMatch = (bScore?: string, wScore?: string, editedTeams?: { black: any; white: any }) => {
@@ -92,20 +88,24 @@ export default function ResultsPage() {
     setPendingWhiteScore("");
   };
 
-  // Handle saving pending two pools matches
-  const handleSavePendingPoolMatch = (pool: "A" | "B") => {
+  // Handle saving pending two-pool matches (scores + optional roster edits)
+  const handleSavePendingPoolMatch = (
+    pool: "A" | "B",
+    bScore: string,
+    wScore: string,
+    editedTeams?: { black: any; white: any }
+  ) => {
     if (!twoPoolsTeams) return;
     
     const teams = pool === "A" ? twoPoolsTeams.poolA : twoPoolsTeams.poolB;
     if (!teams) return;
     
-    const bScore = pool === "A" ? pendingPoolABlackScore : pendingPoolBBlackScore;
-    const wScore = pool === "A" ? pendingPoolAWhiteScore : pendingPoolBWhiteScore;
     const b = parseInt(bScore);
     const w = parseInt(wScore);
     if (isNaN(b) || isNaN(w)) return;
     
-    const teamSnapshot = createMatchTeamSnapshot(teams, players);
+    const teamsForSnapshot = editedTeams ?? teams;
+    const teamSnapshot = createMatchTeamSnapshot(teamsForSnapshot as any, players);
     const matchId = saveMatchResult({
       date: new Date(),
       teams: teamSnapshot,
@@ -117,16 +117,12 @@ export default function ResultsPage() {
       tournamentId: null,
     });
     
-    completeMatch(matchId, b, w, false);
+    completeMatch(matchId, b, w, false, editedTeams);
     
     if (pool === "A") {
       updateWorkspace({ twoPoolsTeams: { ...twoPoolsTeams, poolA: null } });
-      setPendingPoolABlackScore("");
-      setPendingPoolAWhiteScore("");
     } else {
       updateWorkspace({ twoPoolsTeams: { ...twoPoolsTeams, poolB: null } });
-      setPendingPoolBBlackScore("");
-      setPendingPoolBWhiteScore("");
     }
     
     // If both pools are now cleared, unlock teams
@@ -189,104 +185,27 @@ export default function ResultsPage() {
             
             {(mode === "two_pools" || mode === "preset_teams") && twoPoolsTeams ? (
               <>
-                {/* Pool A Pending */}
                 {twoPoolsTeams.poolA && (
-                  <Card className="border-amber-500/30 bg-amber-500/5">
-                    <CardHeader className="pb-2 pt-3 px-4 flex flex-row items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30">Pool A</Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {twoPoolsTeams.poolA.black.players.length} vs {twoPoolsTeams.poolA.white.players.length} players
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <Label className="text-[10px] text-muted-foreground">Black</Label>
-                          <Input
-                            type="number"
-                            placeholder="0"
-                            value={pendingPoolABlackScore}
-                            onChange={(e) => setPendingPoolABlackScore(e.target.value)}
-                            className="h-10 text-center text-lg font-bold"
-                            data-testid="input-pending-pool-a-black"
-                          />
-                        </div>
-                        <span className="text-muted-foreground font-bold">-</span>
-                        <div className="flex-1">
-                          <Label className="text-[10px] text-muted-foreground">White</Label>
-                          <Input
-                            type="number"
-                            placeholder="0"
-                            value={pendingPoolAWhiteScore}
-                            onChange={(e) => setPendingPoolAWhiteScore(e.target.value)}
-                            className="h-10 text-center text-lg font-bold"
-                            data-testid="input-pending-pool-a-white"
-                          />
-                        </div>
-                        <Button
-                          size="sm"
-                          onClick={() => handleSavePendingPoolMatch("A")}
-                          disabled={!pendingPoolABlackScore || !pendingPoolAWhiteScore}
-                          className="h-10"
-                          data-testid="button-save-pool-a"
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <PendingMatchCard
+                    generatedTeams={twoPoolsTeams.poolA}
+                    allPlayers={players}
+                    poolLabel="Pool A"
+                    poolBadgeClass="bg-amber-500/20 text-amber-500 border-amber-500/30"
+                    cardBorderClass="border-amber-500/30 bg-amber-500/5"
+                    testIdPrefix="pool-a"
+                    onSave={(b, w, et) => handleSavePendingPoolMatch("A", b, w, et)}
+                  />
                 )}
-                
-                {/* Pool B Pending */}
                 {twoPoolsTeams.poolB && (
-                  <Card className="border-violet-500/30 bg-violet-500/5">
-                    <CardHeader className="pb-2 pt-3 px-4 flex flex-row items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-violet-500/20 text-violet-500 border-violet-500/30">Pool B</Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {twoPoolsTeams.poolB.black.players.length} vs {twoPoolsTeams.poolB.white.players.length} players
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <Label className="text-[10px] text-muted-foreground">Black</Label>
-                          <Input
-                            type="number"
-                            placeholder="0"
-                            value={pendingPoolBBlackScore}
-                            onChange={(e) => setPendingPoolBBlackScore(e.target.value)}
-                            className="h-10 text-center text-lg font-bold"
-                            data-testid="input-pending-pool-b-black"
-                          />
-                        </div>
-                        <span className="text-muted-foreground font-bold">-</span>
-                        <div className="flex-1">
-                          <Label className="text-[10px] text-muted-foreground">White</Label>
-                          <Input
-                            type="number"
-                            placeholder="0"
-                            value={pendingPoolBWhiteScore}
-                            onChange={(e) => setPendingPoolBWhiteScore(e.target.value)}
-                            className="h-10 text-center text-lg font-bold"
-                            data-testid="input-pending-pool-b-white"
-                          />
-                        </div>
-                        <Button
-                          size="sm"
-                          onClick={() => handleSavePendingPoolMatch("B")}
-                          disabled={!pendingPoolBBlackScore || !pendingPoolBWhiteScore}
-                          className="h-10"
-                          data-testid="button-save-pool-b"
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <PendingMatchCard
+                    generatedTeams={twoPoolsTeams.poolB}
+                    allPlayers={players}
+                    poolLabel="Pool B"
+                    poolBadgeClass="bg-violet-500/20 text-violet-500 border-violet-500/30"
+                    cardBorderClass="border-violet-500/30 bg-violet-500/5"
+                    testIdPrefix="pool-b"
+                    onSave={(b, w, et) => handleSavePendingPoolMatch("B", b, w, et)}
+                  />
                 )}
               </>
             ) : generatedTeams ? (
@@ -615,10 +534,18 @@ function PendingMatchCard({
   generatedTeams,
   allPlayers,
   onSave,
+  poolLabel,
+  poolBadgeClass,
+  cardBorderClass,
+  testIdPrefix = "pending",
 }: {
   generatedTeams: { black: any; white: any };
   allPlayers: Player[];
   onSave: (b: string, w: string, editedTeams?: { black: any; white: any }) => void;
+  poolLabel?: string;
+  poolBadgeClass?: string;
+  cardBorderClass?: string;
+  testIdPrefix?: string;
 }) {
   const { visibilitySettings } = useApp();
   const { showRatings = true } = visibilitySettings || {};
@@ -706,12 +633,14 @@ function PendingMatchCard({
   }
 
   return (
-    <Card className="border-amber-500/30 bg-amber-500/5">
+    <Card className={cardBorderClass ?? "border-amber-500/30 bg-amber-500/5"}>
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CardHeader className="pb-2 pt-3 px-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30">Pending</Badge>
+              <Badge className={poolBadgeClass ?? "bg-amber-500/20 text-amber-500 border-amber-500/30"}>
+                {poolLabel ?? "Pending"}
+              </Badge>
               <span className="text-xs text-muted-foreground">
                 {editedBlack.length} vs {editedWhite.length} players
               </span>
@@ -722,14 +651,14 @@ function PendingMatchCard({
               )}
             </div>
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px]" data-testid="button-toggle-pending-players">
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px]" data-testid={`button-toggle-${testIdPrefix}-players`}>
                 {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </Button>
             </CollapsibleTrigger>
           </div>
         </CardHeader>
         <CollapsibleContent>
-          <div className="px-4 pb-3 grid grid-cols-2 gap-4 border-t border-amber-500/20 pt-3">
+          <div className="px-4 pb-3 grid grid-cols-2 gap-4 border-t border-border/20 pt-3">
             {renderSideList(editedBlack, 'black', 'text-primary', 'Black')}
             {renderSideList(editedWhite, 'white', 'text-cyan-400', 'White')}
           </div>
@@ -744,7 +673,7 @@ function PendingMatchCard({
                 value={blackScore}
                 onChange={(e) => setBlackScore(e.target.value)}
                 className="h-10 text-center text-lg font-bold"
-                data-testid="input-pending-black"
+                data-testid={`input-${testIdPrefix}-black`}
               />
             </div>
             <span className="text-muted-foreground font-bold">-</span>
@@ -756,7 +685,7 @@ function PendingMatchCard({
                 value={whiteScore}
                 onChange={(e) => setWhiteScore(e.target.value)}
                 className="h-10 text-center text-lg font-bold"
-                data-testid="input-pending-white"
+                data-testid={`input-${testIdPrefix}-white`}
               />
             </div>
             <Button
@@ -764,7 +693,7 @@ function PendingMatchCard({
               onClick={handleSave}
               disabled={!blackScore || !whiteScore}
               className="h-10"
-              data-testid="button-save-pending"
+              data-testid={`button-save-${testIdPrefix}`}
             >
               <CheckCircle2 className="h-4 w-4" />
             </Button>

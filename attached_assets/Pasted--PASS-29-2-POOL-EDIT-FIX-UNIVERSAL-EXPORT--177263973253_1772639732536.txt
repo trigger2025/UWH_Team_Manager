@@ -1,0 +1,232 @@
+==============================
+PASS 29 – 2 POOL EDIT FIX + UNIVERSAL EXPORT
+==============================
+
+GOALS
+• Make 2 Pool mode results editable (same as 1 pool)
+• Make Preset 2 Pool results editable
+• Do NOT modify 1 Pool behaviour
+• Do NOT modify Tournament mode logic
+• Add missing export buttons for:
+    - 2 Pool generate
+    - 2 Pool preset
+    - Tournament teams
+    - Tournament schedule
+• Ensure export respects rating + position toggles
+• Ensure export actually downloads PNG file
+
+---------------------------------------
+PART 1 — UNIFY RESULT CREATION (CRITICAL)
+---------------------------------------
+
+ISSUE:
+2 pool and preset mode are manually constructing result objects
+instead of using the same result factory as 1 pool.
+
+FIX:
+
+1️⃣ Locate the function used by 1 pool mode to create results.
+Example pattern:
+
+createResult({
+    blackPlayers,
+    whitePlayers,
+    pool,
+    mode
+})
+
+2️⃣ In 2 Pool generation logic:
+
+REMOVE any manual result.push({...}) constructions.
+
+3️⃣ Replace with:
+
+createResult({
+    blackPlayers: poolATeam1,
+    whitePlayers: poolATeam2,
+    pool: "A",
+    mode: "2-pool"
+})
+
+createResult({
+    blackPlayers: poolBTeam1,
+    whitePlayers: poolBTeam2,
+    pool: "B",
+    mode: "2-pool"
+})
+
+4️⃣ Apply identical change inside Preset mode when 2 pools selected.
+
+---------------------------------------
+PART 2 — ENSURE RESULT SNAPSHOT STRUCTURE
+---------------------------------------
+
+Each result MUST contain:
+
+{
+  id,
+  mode,
+  pool,
+  status: "pending",
+  ratingApplied: false,
+
+  blackTeam: [
+      { id, name, ratingAtGeneration }
+  ],
+
+  whiteTeam: [
+      { id, name, ratingAtGeneration }
+  ],
+
+  blackAvgAtGeneration,
+  whiteAvgAtGeneration
+}
+
+IMPORTANT:
+ratingAtGeneration = snapshot of player.currentRating at generation time.
+Never reference live rating directly.
+
+---------------------------------------
+PART 3 — VERIFY EDITABLE LOGIC TRIGGERS
+---------------------------------------
+
+Editing must remain enabled when:
+
+result.status === "pending"
+AND
+ratingApplied === false
+
+This guarantees:
+✓ Add player works
+✓ Remove player works
+✓ Rating deltas apply only on finalise
+✓ Delete reverts properly
+
+---------------------------------------
+PART 4 — UNIVERSAL EXPORT ENGINE
+---------------------------------------
+
+Ensure html2canvas is installed and imported.
+
+Reusable function:
+
+function exportElementAsImage(elementId, fileName) {
+    const element = document.getElementById(elementId);
+
+    if (!element) return;
+
+    html2canvas(element).then(canvas => {
+        canvas.toBlob(function(blob) {
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName + ".png";
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    });
+}
+
+---------------------------------------
+PART 5 — ADD EXPORT BUTTONS (MISSING MODES)
+---------------------------------------
+
+1️⃣ 2 POOL GENERATE VIEW
+
+Wrap both pool panels in:
+
+<div id="export-2pool-container">
+    ...Pool A panel...
+    ...Pool B panel...
+</div>
+
+Add button:
+[ Export Teams ]
+
+Calls:
+exportElementAsImage("export-2pool-container", "2Pool_Teams")
+
+---------------------------------------
+
+2️⃣ 2 POOL PRESET MODE
+
+Wrap preset pool panels in:
+
+<div id="export-preset-2pool-container">
+    ...teams...
+</div>
+
+Add button:
+[ Export Preset Teams ]
+
+Calls:
+exportElementAsImage("export-preset-2pool-container", "Preset_Teams")
+
+---------------------------------------
+
+3️⃣ TOURNAMENT TAB – TEAMS VIEW
+
+When tournament teams are displayed (before or during matches):
+
+Wrap in:
+
+<div id="export-tournament-teams">
+    ...tournament team panels...
+</div>
+
+Add button:
+[ Export Tournament Teams ]
+
+Calls:
+exportElementAsImage("export-tournament-teams", "Tournament_Teams")
+
+---------------------------------------
+
+4️⃣ TOURNAMENT TAB – SCHEDULE VIEW
+
+Wrap schedule table in:
+
+<div id="export-tournament-schedule">
+    ...schedule...
+</div>
+
+Add button:
+[ Export Schedule ]
+
+Calls:
+exportElementAsImage("export-tournament-schedule", "Tournament_Schedule")
+
+---------------------------------------
+PART 6 — RESPECT SETTINGS TOGGLES
+---------------------------------------
+
+Export captures visible DOM only.
+
+Since UI already respects:
+• showRatings toggle
+• showPositions toggle
+
+No additional logic required.
+
+Export reflects exactly what user sees.
+
+---------------------------------------
+PART 7 — DO NOT MODIFY
+---------------------------------------
+
+• 1 pool generate logic
+• Tournament scheduling logic
+• Tournament rating math
+• Rating toggle system
+• Any rating calculations
+• Existing editable logic
+
+This pass:
+✓ Unifies 2 pool result creation
+✓ Fixes preset 2 pool editing
+✓ Adds missing export buttons everywhere
+✓ Ensures download works properly
+
+---------------------------------------
+END PASS 29
+---------------------------------------

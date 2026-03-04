@@ -24,7 +24,8 @@ import {
   Clock,
   Trophy,
   Minus,
-  Plus
+  Plus,
+  Download
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player, TournamentTeam } from "@shared/schema";
@@ -87,6 +88,17 @@ export default function GeneratePage() {
   } = generationWorkspace;
 
   const teamsRef = useRef<HTMLDivElement>(null);
+  const twoPoolsRef = useRef<HTMLDivElement>(null);
+
+  async function exportTwoPoolTeams() {
+    if (!twoPoolsRef.current) return;
+    const html2canvas = (await import("html2canvas")).default;
+    const canvas = await html2canvas(twoPoolsRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
+    const link = document.createElement("a");
+    link.download = "pool-teams.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
 
   async function exportTeams() {
     if (!teamsRef.current) return;
@@ -1162,83 +1174,86 @@ export default function GeneratePage() {
               animate={{ opacity: 1, scale: 1 }}
               className="space-y-4"
             >
-              {/* Pool A Teams */}
-              {twoPoolsTeams.poolA && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 px-1">
-                    <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30 font-bold">
-                      Pool A
-                    </Badge>
-                    {mode === "preset_teams" && presetPoolTarget === "A" && (
-                      <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[9px]">Preset Match</Badge>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 gap-3">
-                    <TeamCard
-                      team={twoPoolsTeams.poolA.black}
-                      colorClass="primary"
-                      onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "White", "A")}
-                      onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "A")}
-                      poolLabel="A"
-                      showRatings={showRatings}
-                      showPositions={showPositions}
-                    />
-                    <div className="flex items-center justify-center">
-                      <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
-                        <span className="text-[8px] font-bold text-muted-foreground">VS</span>
-                      </div>
+              {/* Pool A + B Teams (wrapped for export) */}
+              <div ref={twoPoolsRef} className="space-y-4 bg-background p-1">
+                {/* Pool A Teams */}
+                {twoPoolsTeams.poolA && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 px-1">
+                      <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30 font-bold">
+                        Pool A
+                      </Badge>
+                      {mode === "preset_teams" && presetPoolTarget === "A" && (
+                        <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[9px]">Preset Match</Badge>
+                      )}
                     </div>
-                    <TeamCard
-                      team={twoPoolsTeams.poolA.white}
-                      colorClass="cyan-400"
-                      onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "Black", "A")}
-                      onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "A")}
-                      poolLabel="A"
-                      showRatings={showRatings}
-                      showPositions={showPositions}
-                    />
+                    <div className="grid grid-cols-1 gap-3">
+                      <TeamCard
+                        team={twoPoolsTeams.poolA.black}
+                        colorClass="primary"
+                        onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "White", "A")}
+                        onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "A")}
+                        poolLabel="A"
+                        showRatings={showRatings}
+                        showPositions={showPositions}
+                      />
+                      <div className="flex items-center justify-center">
+                        <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
+                          <span className="text-[8px] font-bold text-muted-foreground">VS</span>
+                        </div>
+                      </div>
+                      <TeamCard
+                        team={twoPoolsTeams.poolA.white}
+                        colorClass="cyan-400"
+                        onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "Black", "A")}
+                        onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "A")}
+                        poolLabel="A"
+                        showRatings={showRatings}
+                        showPositions={showPositions}
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Pool B Teams */}
-              {twoPoolsTeams.poolB && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 px-1">
-                    <Badge className="bg-violet-500/20 text-violet-500 border-violet-500/30 font-bold">
-                      Pool B
-                    </Badge>
-                    {mode === "preset_teams" && presetPoolTarget === "B" && (
-                      <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[9px]">Preset Match</Badge>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 gap-3">
-                    <TeamCard
-                      team={twoPoolsTeams.poolB.black}
-                      colorClass="primary"
-                      onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "White", "B")}
-                      onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "B")}
-                      poolLabel="B"
-                      showRatings={showRatings}
-                      showPositions={showPositions}
-                    />
-                    <div className="flex items-center justify-center">
-                      <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
-                        <span className="text-[8px] font-bold text-muted-foreground">VS</span>
-                      </div>
+                {/* Pool B Teams */}
+                {twoPoolsTeams.poolB && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 px-1">
+                      <Badge className="bg-violet-500/20 text-violet-500 border-violet-500/30 font-bold">
+                        Pool B
+                      </Badge>
+                      {mode === "preset_teams" && presetPoolTarget === "B" && (
+                        <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[9px]">Preset Match</Badge>
+                      )}
                     </div>
-                    <TeamCard
-                      team={twoPoolsTeams.poolB.white}
-                      colorClass="cyan-400"
-                      onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "Black", "B")}
-                      onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "B")}
-                      poolLabel="B"
-                      showRatings={showRatings}
-                      showPositions={showPositions}
-                    />
+                    <div className="grid grid-cols-1 gap-3">
+                      <TeamCard
+                        team={twoPoolsTeams.poolB.black}
+                        colorClass="primary"
+                        onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "White", "B")}
+                        onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "B")}
+                        poolLabel="B"
+                        showRatings={showRatings}
+                        showPositions={showPositions}
+                      />
+                      <div className="flex items-center justify-center">
+                        <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
+                          <span className="text-[8px] font-bold text-muted-foreground">VS</span>
+                        </div>
+                      </div>
+                      <TeamCard
+                        team={twoPoolsTeams.poolB.white}
+                        colorClass="cyan-400"
+                        onMovePlayer={(playerId) => handleMovePlayerTwoPools(playerId, "Black", "B")}
+                        onSwapPool={(playerId) => handleSwapPlayerPool(playerId, "B")}
+                        poolLabel="B"
+                        showRatings={showRatings}
+                        showPositions={showPositions}
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {/* Action Buttons */}
               <div className="flex flex-col gap-2">
@@ -1251,7 +1266,7 @@ export default function GeneratePage() {
                   <ChevronLeft className="h-4 w-4" />
                   Reselect Players
                 </Button>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Button 
                     variant="secondary"
                     className="h-10 rounded-xl gap-2 text-sm"
@@ -1261,13 +1276,22 @@ export default function GeneratePage() {
                     <RefreshCw className="h-4 w-4" />
                     Re-roll
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="h-10 rounded-xl gap-1 text-sm"
+                    onClick={exportTwoPoolTeams}
+                    data-testid="button-export-pool-teams"
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
+                  </Button>
                   <Button 
                     className="h-10 rounded-xl gap-2 text-sm"
                     onClick={handleConfirmTwoPools}
                     data-testid="button-confirm"
                   >
                     <CheckCircle2 className="h-4 w-4" />
-                    Confirm All
+                    Confirm
                   </Button>
                 </div>
               </div>

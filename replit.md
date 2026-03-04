@@ -70,6 +70,12 @@ Preferred communication style: Simple, everyday language.
 - **Assignment**: Requires players to be assigned to Pool A or Pool B before generation.
 - **Generation**: Independently generates Black vs. White teams for each pool.
 - **Confirmation**: Creates separate match records for each pool.
+- **Export**: Export button in the 3-column action row (Re-roll / Export / Confirm) captures both pool team cards as PNG via html2canvas (Safari-safe toDataURL pattern).
+- **Editable Pending**: Pool A and Pool B pending match cards on the Results page use the full `PendingMatchCard` component — supports expanding player roster, adding/removing players, then entering scores to save.
+
+## Editable Pending Pool Matches
+- **Component**: `PendingMatchCard` accepts optional `poolLabel`, `poolBadgeClass`, `cardBorderClass`, `testIdPrefix` props to render as Pool A/B cards.
+- **Saves**: Calls `handleSavePendingPoolMatch(pool, bScore, wScore, editedTeams?)` which passes `editedTeams` to `completeMatch` as `overrideTeams`.
 
 ## Visibility Settings
 - **Configuration**: Allows users to toggle visibility of ratings and positions across various app views (e.g., player selection, team cards, match details).
