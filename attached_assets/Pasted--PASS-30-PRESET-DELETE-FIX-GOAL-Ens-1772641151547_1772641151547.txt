@@ -1,0 +1,118 @@
+==============================
+PASS 30 – PRESET DELETE FIX
+==============================
+
+GOAL:
+Ensure preset-generated results:
+• Apply rating deltas correctly
+• Revert rating deltas correctly on delete
+• Do NOT affect other modes
+
+---------------------------------------
+PART 1 — ENSURE RESULT STRUCTURE MATCHES STANDARD
+---------------------------------------
+
+Every preset-generated result MUST include:
+
+{
+  id,
+  mode: "preset",
+  pool,
+  status: "pending",
+  ratingApplied: false,
+
+  blackTeam: [...],
+  whiteTeam: [...],
+
+  blackAvgAtGeneration,
+  whiteAvgAtGeneration,
+
+  appliedDeltas: []   // <-- REQUIRED
+}
+
+If appliedDeltas does not exist, add it.
+
+---------------------------------------
+PART 2 — FIX FINALISE LOGIC FOR PRESET
+---------------------------------------
+
+In the shared finaliseResult(result) function:
+
+After calculating rating changes per player:
+
+const delta = calculateDelta(...)
+
+When applying:
+
+player.currentRating += delta
+
+ALSO PUSH:
+
+result.appliedDeltas.push({
+    playerId: player.id,
+    delta: delta
+})
+
+After all players processed:
+
+result.ratingApplied = true
+result.status = "finalised"
+
+IMPORTANT:
+Do NOT special-case preset.
+It must use the SAME finalise function as other modes.
+
+---------------------------------------
+PART 3 — FIX DELETE / REVERT LOGIC
+---------------------------------------
+
+In deleteResult(resultId):
+
+Find result.
+
+IF result.ratingApplied === true:
+
+    For each entry in result.appliedDeltas:
+
+        const player = findPlayer(entry.playerId)
+        player.currentRating -= entry.delta
+
+Then remove result from results list.
+
+IMPORTANT:
+Do NOT recalculate deltas on delete.
+Only reverse stored deltas.
+
+---------------------------------------
+PART 4 — SAFETY CHECK
+---------------------------------------
+
+Ensure:
+• appliedDeltas resets to [] when result created
+• appliedDeltas is NOT shared between results
+• No mutation of snapshot objects
+
+---------------------------------------
+PART 5 — DO NOT MODIFY
+---------------------------------------
+
+• 1 pool logic
+• 2 pool logic
+• Tournament logic
+• Editable add/remove logic
+• Export system
+
+---------------------------------------
+EXPECTED BEHAVIOUR AFTER FIX
+---------------------------------------
+
+Preset result:
+✓ Finalise → ratings change once
+✓ Delete → ratings revert exactly once
+✓ No double subtract
+✓ No leftover rating drift
+✓ Multiple preset games behave independently
+
+---------------------------------------
+END PASS 30
+---------------------------------------

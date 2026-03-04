@@ -146,6 +146,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newMatch: Match = {
       ...resultData,
       id: Math.floor(Math.random() * 1000000),
+      appliedDeltas: [],
     };
     setState(prev => ({ ...prev, matchResults: [newMatch, ...prev.matchResults] }));
     return newMatch.id;
@@ -196,6 +197,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const whiteWon = whiteScore > blackScore;
       const isDraw = blackScore === whiteScore;
 
+      const appliedDeltas: { playerId: number; delta: number; usedOffHand: boolean }[] = [];
+
       const updatedPlayers = prev.players.map(player => {
         const adj = adjustments.find(a => a.playerId === player.id);
         if (!adj) return player;
@@ -213,6 +216,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (whiteWon) won = true;
           else if (blackWon) lost = true;
         }
+
+        const roundedDelta = Math.round(adj.change);
+        appliedDeltas.push({ playerId: player.id, delta: roundedDelta, usedOffHand: adj.usedOffHand });
 
         if (adj.usedOffHand && player.weakHandEnabled && player.weakHandRating !== null) {
           const newOffHandRating = Math.round(Math.min(Math.max(player.weakHandRating + adj.change, 0), 1000));
@@ -260,7 +266,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       const updatedMatches = prev.matchResults.map(m => 
-        m.id === id ? { ...m, blackScore, whiteScore, completed: true, teams: updatedTeams } : m
+        m.id === id ? { ...m, blackScore, whiteScore, completed: true, teams: updatedTeams, appliedDeltas } : m
       );
 
       console.log("[completeMatch] Committing updated players and match to state");
@@ -287,27 +293,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let updatedPlayers = [...prev.players];
       
       if (match.completed) {
+        const matchAny = match as any;
         const teams = match.teams as any;
+        const blackWon = match.blackScore! > match.whiteScore!;
+        const whiteWon = match.whiteScore! > match.blackScore!;
+        const isDraw = match.blackScore === match.whiteScore;
+
+        // --- Step 1: Reverse ratings using stored appliedDeltas (preferred, format-agnostic) ---
+        if (matchAny.appliedDeltas && matchAny.appliedDeltas.length > 0) {
+          matchAny.appliedDeltas.forEach((entry: { playerId: number; delta: number; usedOffHand: boolean }) => {
+            updatedPlayers = updatedPlayers.map(p => {
+              if (p.id !== entry.playerId) return p;
+              if (entry.usedOffHand && p.weakHandEnabled && p.weakHandRating !== null) {
+                const restored = Math.round(Math.max(0, Math.min(1000, p.weakHandRating - entry.delta)));
+                return { ...p, weakHandRating: restored };
+              } else {
+                const restored = Math.round(Math.max(0, Math.min(1000, p.rating - entry.delta)));
+                return { ...p, rating: restored };
+              }
+            });
+          });
+        }
+
+        // --- Step 2: Reverse wins/losses/draws from snapshots (works for both id and playerId formats) ---
         const allPlayerSnapshots = [
           ...(teams.black?.players || []),
           ...(teams.white?.players || [])
         ];
-        
+
         allPlayerSnapshots.forEach((snapshot: any) => {
-          if (!snapshot.playerId) return;
-          
+          const pid = snapshot.playerId ?? snapshot.id;
+          if (!pid) return;
+
           updatedPlayers = updatedPlayers.map(p => {
-            if (p.id !== snapshot.playerId) return p;
-            
+            if (p.id !== pid) return p;
+
             let newWins = p.wins;
             let newLosses = p.losses;
             let newDraws = p.draws;
-            
-            const blackWon = match.blackScore! > match.whiteScore!;
-            const whiteWon = match.whiteScore! > match.blackScore!;
-            const isDraw = match.blackScore === match.whiteScore;
-            
-            if (snapshot.team === "Black") {
+
+            const snapshotTeam = snapshot.team ?? (teams.black?.players?.some((bp: any) => (bp.playerId ?? bp.id) === pid) ? "Black" : "White");
+
+            if (snapshotTeam === "Black") {
               if (blackWon) newWins = Math.max(0, newWins - 1);
               else if (whiteWon) newLosses = Math.max(0, newLosses - 1);
               else if (isDraw) newDraws = Math.max(0, newDraws - 1);
@@ -316,30 +343,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               else if (blackWon) newLosses = Math.max(0, newLosses - 1);
               else if (isDraw) newDraws = Math.max(0, newDraws - 1);
             }
-            
-            if (snapshot.ratingDelta !== undefined && snapshot.ratingDelta !== 0) {
-              const reversedDelta = -snapshot.ratingDelta;
-              if (snapshot.usedOffHand && p.weakHandEnabled && p.weakHandRating !== null) {
-                const restored = Math.round(Math.max(0, Math.min(1000, p.weakHandRating + reversedDelta)));
-                return { ...p, weakHandRating: restored, wins: newWins, losses: newLosses, draws: newDraws };
-              } else {
-                const restored = Math.round(Math.max(0, Math.min(1000, p.rating + reversedDelta)));
-                return { ...p, rating: restored, wins: newWins, losses: newLosses, draws: newDraws };
+
+            // Only update rating from snapshot if no appliedDeltas (legacy fallback)
+            if (!matchAny.appliedDeltas || matchAny.appliedDeltas.length === 0) {
+              if (snapshot.ratingDelta !== undefined && snapshot.ratingDelta !== 0) {
+                const reversedDelta = -snapshot.ratingDelta;
+                if (snapshot.usedOffHand && p.weakHandEnabled && p.weakHandRating !== null) {
+                  const restored = Math.round(Math.max(0, Math.min(1000, p.weakHandRating + reversedDelta)));
+                  return { ...p, weakHandRating: restored, wins: newWins, losses: newLosses, draws: newDraws };
+                } else {
+                  const restored = Math.round(Math.max(0, Math.min(1000, p.rating + reversedDelta)));
+                  return { ...p, rating: restored, wins: newWins, losses: newLosses, draws: newDraws };
+                }
+              }
+              // Legacy fallback: older snapshots may have ratingBefore but no ratingDelta
+              if (snapshot.ratingBefore !== undefined && snapshot.ratingAfter !== undefined) {
+                const legacyDelta = snapshot.ratingBefore - snapshot.ratingAfter;
+                if (snapshot.usedOffHand && p.weakHandEnabled && p.weakHandRating !== null) {
+                  const restored = Math.round(Math.max(0, Math.min(1000, p.weakHandRating + legacyDelta)));
+                  return { ...p, weakHandRating: restored, wins: newWins, losses: newLosses, draws: newDraws };
+                } else {
+                  const restored = Math.round(Math.max(0, Math.min(1000, p.rating + legacyDelta)));
+                  return { ...p, rating: restored, wins: newWins, losses: newLosses, draws: newDraws };
+                }
               }
             }
 
-            // Legacy fallback: older snapshots may have ratingBefore but no ratingDelta
-            if (snapshot.ratingBefore !== undefined && snapshot.ratingAfter !== undefined) {
-              const legacyDelta = snapshot.ratingBefore - snapshot.ratingAfter;
-              if (snapshot.usedOffHand && p.weakHandEnabled && p.weakHandRating !== null) {
-                const restored = Math.round(Math.max(0, Math.min(1000, p.weakHandRating + legacyDelta)));
-                return { ...p, weakHandRating: restored, wins: newWins, losses: newLosses, draws: newDraws };
-              } else {
-                const restored = Math.round(Math.max(0, Math.min(1000, p.rating + legacyDelta)));
-                return { ...p, rating: restored, wins: newWins, losses: newLosses, draws: newDraws };
-              }
-            }
-            
             return { ...p, wins: newWins, losses: newLosses, draws: newDraws };
           });
         });

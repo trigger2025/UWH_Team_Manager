@@ -91,6 +91,11 @@ Preferred communication style: Simple, everyday language.
 - **After Generation**: All manual moves, re-roll, pool swapping, and confirm flow work identically to standard/two-pools mode
 - **AppContext fix**: `saveTeamTemplate` and results.tsx display both check for `preset_teams` mode when `twoPoolsTeams` is populated, routing through the two-pool path
 
+## Rating Delta System
+- **Applied Deltas**: `completeMatch` stores `appliedDeltas: [{ playerId, delta, usedOffHand }]` on each completed match, recording the exact rating change applied per player.
+- **Reversal**: `deleteMatchResultWithReversal` uses `appliedDeltas` first (format-agnostic, works for both snapshot.playerId and snapshot.id formats). Falls back to snapshot `ratingDelta` for legacy matches. This fixes rating drift for pool/preset mode matches where `editedTeams` is passed.
+- **Wins/Losses/Draws**: Snapshot-based reversal updated to handle both `snapshot.playerId` and `snapshot.id` field formats.
+
 ## Key Design Patterns
 - **Mobile-First**: Optimized for touch interfaces with a bottom navigation bar.
 - **Offline-First**: Core functionality operates without network dependency.
