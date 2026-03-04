@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
@@ -17,13 +17,15 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  X
+  X,
+  UserPlus,
+  Search
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Match, Player, GeneratedTeam, TournamentHistoryEntry, TournamentFixture, PlayerSnapshot } from "@shared/schema";
+import { Match, Player, GeneratedTeam, TournamentHistoryEntry, TournamentFixture, PlayerSnapshot, TournamentTeam } from "@shared/schema";
 import { createMatchTeamSnapshot } from "@/lib/team-logic";
 import { useLocation } from "wouter";
 
@@ -58,15 +60,17 @@ export default function ResultsPage() {
   const [pendingPoolBWhiteScore, setPendingPoolBWhiteScore] = useState("");
 
   // Handle saving a pending match (standard mode)
-  const handleSavePendingMatch = () => {
+  const handleSavePendingMatch = (bScore?: string, wScore?: string, editedTeams?: { black: any; white: any }) => {
     if (!generatedTeams) return;
     
-    const b = parseInt(pendingBlackScore);
-    const w = parseInt(pendingWhiteScore);
+    const b = parseInt(bScore ?? pendingBlackScore);
+    const w = parseInt(wScore ?? pendingWhiteScore);
     if (isNaN(b) || isNaN(w)) return;
     
+    const teamsForSnapshot = editedTeams ?? generatedTeams;
+    
     // Create snapshot and save match
-    const teamSnapshot = createMatchTeamSnapshot(generatedTeams, players);
+    const teamSnapshot = createMatchTeamSnapshot(teamsForSnapshot as any, players);
     const matchId = saveMatchResult({
       date: new Date(),
       teams: teamSnapshot,
@@ -139,12 +143,12 @@ export default function ResultsPage() {
     navigate("/generate");
   };
 
-  const handleComplete = (id: number) => {
+  const handleComplete = (id: number, editedTeams?: { black: any; white: any }) => {
     const b = parseInt(blackScore);
     const w = parseInt(whiteScore);
     if (isNaN(b) || isNaN(w)) return;
 
-    completeMatch(id, b, w, false); // Tournament mode disabled
+    completeMatch(id, b, w, false, editedTeams);
     setScoringMatchId(null);
     setBlackScore("");
     setWhiteScore("");
@@ -286,53 +290,11 @@ export default function ResultsPage() {
                 )}
               </>
             ) : generatedTeams ? (
-              /* Standard Mode Pending Match */
-              <Card className="border-amber-500/30 bg-amber-500/5">
-                <CardHeader className="pb-2 pt-3 px-4 flex flex-row items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30">Pending</Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {generatedTeams.black.players.length} vs {generatedTeams.white.players.length} players
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-4 pb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <Label className="text-[10px] text-muted-foreground">Black</Label>
-                      <Input
-                        type="number"
-                        placeholder="0"
-                        value={pendingBlackScore}
-                        onChange={(e) => setPendingBlackScore(e.target.value)}
-                        className="h-10 text-center text-lg font-bold"
-                        data-testid="input-pending-black"
-                      />
-                    </div>
-                    <span className="text-muted-foreground font-bold">-</span>
-                    <div className="flex-1">
-                      <Label className="text-[10px] text-muted-foreground">White</Label>
-                      <Input
-                        type="number"
-                        placeholder="0"
-                        value={pendingWhiteScore}
-                        onChange={(e) => setPendingWhiteScore(e.target.value)}
-                        className="h-10 text-center text-lg font-bold"
-                        data-testid="input-pending-white"
-                      />
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={handleSavePendingMatch}
-                      disabled={!pendingBlackScore || !pendingWhiteScore}
-                      className="h-10"
-                      data-testid="button-save-pending"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+              <PendingMatchCard
+                generatedTeams={generatedTeams}
+                allPlayers={players}
+                onSave={(b, w, editedTeams) => handleSavePendingMatch(b, w, editedTeams)}
+              />
             ) : null}
             
             {/* Cancel button */}
@@ -388,8 +350,9 @@ export default function ResultsPage() {
                       onCancelScoring={() => setScoringMatchId(null)}
                       onBlackScoreChange={setBlackScore}
                       onWhiteScoreChange={setWhiteScore}
-                      onComplete={() => handleComplete(match.id)}
+                      onComplete={(editedTeams) => handleComplete(match.id, editedTeams)}
                       onDelete={() => deleteMatchResultWithReversal(match.id)}
+                      allPlayers={players}
                     />
                   </motion.div>
                 ))}
@@ -592,15 +555,351 @@ function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
   );
 }
 
+function PlayerPickerInline({
+  allPlayers,
+  excludeIds,
+  onSelect,
+  onClose,
+}: {
+  allPlayers: Player[];
+  excludeIds: Set<number>;
+  onSelect: (p: Player) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const filtered = allPlayers
+    .filter(p => !excludeIds.has(p.id))
+    .filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="mt-2 rounded-lg border border-border/50 bg-background shadow-lg overflow-hidden" data-testid="player-picker">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
+        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <input
+          ref={inputRef}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search players…"
+          className="flex-1 text-xs bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
+          data-testid="input-player-search"
+        />
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="max-h-36 overflow-y-auto divide-y divide-border/20">
+        {filtered.length === 0 ? (
+          <div className="px-3 py-3 text-[11px] text-muted-foreground text-center">No available players</div>
+        ) : (
+          filtered.map(p => (
+            <button
+              key={p.id}
+              className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-muted/30 text-left"
+              onClick={() => onSelect(p)}
+              data-testid={`option-player-${p.id}`}
+            >
+              <span>{p.name}</span>
+              <span className="text-muted-foreground text-[10px]">{p.rating}</span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PendingMatchCard({
+  generatedTeams,
+  allPlayers,
+  onSave,
+}: {
+  generatedTeams: { black: any; white: any };
+  allPlayers: Player[];
+  onSave: (b: string, w: string, editedTeams?: { black: any; white: any }) => void;
+}) {
+  const { visibilitySettings } = useApp();
+  const { showRatings = true } = visibilitySettings || {};
+  const [isOpen, setIsOpen] = useState(false);
+  const [blackScore, setBlackScore] = useState("");
+  const [whiteScore, setWhiteScore] = useState("");
+  const [editedBlack, setEditedBlack] = useState<any[]>(() => [...(generatedTeams.black.players || [])]);
+  const [editedWhite, setEditedWhite] = useState<any[]>(() => [...(generatedTeams.white.players || [])]);
+  const [pickerFor, setPickerFor] = useState<'black' | 'white' | null>(null);
+
+  const allMatchIds = new Set<number>([
+    ...editedBlack.map((p: any) => p.id ?? p.playerId),
+    ...editedWhite.map((p: any) => p.id ?? p.playerId),
+  ]);
+
+  function calcAvg(players: any[]): number {
+    if (!players.length) return 0;
+    return Math.round(players.reduce((s: number, p: any) => s + (p.ratingUsed ?? p.rating ?? 0), 0) / players.length);
+  }
+
+  function addPlayer(player: Player, side: 'black' | 'white') {
+    const entry = { id: player.id, name: player.name, ratingUsed: player.rating, usedOffHand: false, assignedPosition: 'Forward', formationRole: 'filler' as const };
+    if (side === 'black') setEditedBlack(prev => [...prev, entry]);
+    else setEditedWhite(prev => [...prev, entry]);
+    setPickerFor(null);
+  }
+
+  function removePlayer(pid: number, side: 'black' | 'white') {
+    const filter = (arr: any[]) => arr.filter((p: any) => (p.id ?? p.playerId) !== pid);
+    if (side === 'black') setEditedBlack(filter);
+    else setEditedWhite(filter);
+  }
+
+  function handleSave() {
+    const editedTeams = {
+      black: { ...generatedTeams.black, players: editedBlack },
+      white: { ...generatedTeams.white, players: editedWhite },
+    };
+    onSave(blackScore, whiteScore, editedTeams);
+  }
+
+  function renderSideList(players: any[], side: 'black' | 'white', color: string, label: string) {
+    return (
+      <div>
+        <div className={`text-[10px] font-bold uppercase ${color} mb-2`}>{label}</div>
+        <ul className="space-y-1.5 mb-2">
+          {players.map((p: any) => {
+            const pid = p.id ?? p.playerId;
+            return (
+              <li key={pid} className="flex items-center justify-between text-xs">
+                <span className="font-medium truncate">{p.name ?? p.playerName}</span>
+                <div className="flex items-center gap-1 shrink-0">
+                  {showRatings && <span className="text-[9px] text-muted-foreground">{p.ratingUsed ?? p.rating}</span>}
+                  <button
+                    onClick={() => removePlayer(pid, side)}
+                    className="text-muted-foreground/40 hover:text-destructive"
+                    data-testid={`button-remove-player-${pid}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        {pickerFor === side ? (
+          <PlayerPickerInline
+            allPlayers={allPlayers}
+            excludeIds={allMatchIds}
+            onSelect={(p) => addPlayer(p, side)}
+            onClose={() => setPickerFor(null)}
+          />
+        ) : (
+          <button
+            onClick={() => setPickerFor(side)}
+            className={`flex items-center gap-1 text-[10px] text-muted-foreground hover:${side === 'black' ? 'text-primary' : 'text-cyan-400'} transition-colors`}
+            data-testid={`button-add-${side}`}
+          >
+            <UserPlus className="h-3 w-3" />
+            + Add {label}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <Card className="border-amber-500/30 bg-amber-500/5">
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CardHeader className="pb-2 pt-3 px-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30">Pending</Badge>
+              <span className="text-xs text-muted-foreground">
+                {editedBlack.length} vs {editedWhite.length} players
+              </span>
+              {showRatings && (
+                <span className="text-[10px] text-muted-foreground">
+                  · Avg {calcAvg(editedBlack)} / {calcAvg(editedWhite)}
+                </span>
+              )}
+            </div>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px]" data-testid="button-toggle-pending-players">
+                {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+        </CardHeader>
+        <CollapsibleContent>
+          <div className="px-4 pb-3 grid grid-cols-2 gap-4 border-t border-amber-500/20 pt-3">
+            {renderSideList(editedBlack, 'black', 'text-primary', 'Black')}
+            {renderSideList(editedWhite, 'white', 'text-cyan-400', 'White')}
+          </div>
+        </CollapsibleContent>
+        <CardContent className="px-4 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex-1">
+              <Label className="text-[10px] text-muted-foreground">Black</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={blackScore}
+                onChange={(e) => setBlackScore(e.target.value)}
+                className="h-10 text-center text-lg font-bold"
+                data-testid="input-pending-black"
+              />
+            </div>
+            <span className="text-muted-foreground font-bold">-</span>
+            <div className="flex-1">
+              <Label className="text-[10px] text-muted-foreground">White</Label>
+              <Input
+                type="number"
+                placeholder="0"
+                value={whiteScore}
+                onChange={(e) => setWhiteScore(e.target.value)}
+                className="h-10 text-center text-lg font-bold"
+                data-testid="input-pending-white"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={!blackScore || !whiteScore}
+              className="h-10"
+              data-testid="button-save-pending"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
 function MatchCard({ 
   match, isScoring, blackScore, whiteScore,
   onScoreClick, onCancelScoring, onBlackScoreChange, onWhiteScoreChange, 
-  onComplete, onDelete 
-}: any) {
+  onComplete, onDelete, allPlayers = []
+}: {
+  match: any;
+  isScoring: boolean;
+  blackScore: string;
+  whiteScore: string;
+  onScoreClick: () => void;
+  onCancelScoring: () => void;
+  onBlackScoreChange: (v: string) => void;
+  onWhiteScoreChange: (v: string) => void;
+  onComplete: (editedTeams?: { black: any; white: any }) => void;
+  onDelete: () => void;
+  allPlayers?: Player[];
+}) {
   const { visibilitySettings } = useApp();
   const { showRatings = true, showPositions = true } = visibilitySettings || {};
   const [isOpen, setIsOpen] = useState(false);
+  const [editedBlack, setEditedBlack] = useState<any[]>(() => [...(match.teams?.black?.players || [])]);
+  const [editedWhite, setEditedWhite] = useState<any[]>(() => [...(match.teams?.white?.players || [])]);
+  const [pickerFor, setPickerFor] = useState<'black' | 'white' | null>(null);
   const teams = match.teams as any;
+
+  const allMatchIds = new Set<number>([
+    ...editedBlack.map((p: any) => p.playerId ?? p.id),
+    ...editedWhite.map((p: any) => p.playerId ?? p.id),
+  ]);
+
+  function calcAvg(players: any[]): number {
+    if (!players.length) return 0;
+    return Math.round(players.reduce((s: number, p: any) => s + (p.ratingUsed ?? p.rating ?? 0), 0) / players.length);
+  }
+
+  function addPlayer(player: Player, side: 'black' | 'white') {
+    const snap = { playerId: player.id, playerName: player.name, ratingUsed: player.rating, position: 'Forward', usedOffHand: false };
+    if (side === 'black') setEditedBlack(prev => [...prev, snap]);
+    else setEditedWhite(prev => [...prev, snap]);
+    setPickerFor(null);
+  }
+
+  function removePlayer(pid: number, side: 'black' | 'white') {
+    const filter = (arr: any[]) => arr.filter((p: any) => (p.playerId ?? p.id) !== pid);
+    if (side === 'black') setEditedBlack(filter);
+    else setEditedWhite(filter);
+  }
+
+  function buildTeams() {
+    return {
+      black: { ...teams.black, players: editedBlack },
+      white: { ...teams.white, players: editedWhite },
+    };
+  }
+
+  function renderTeamList(players: any[], side: 'black' | 'white', color: string) {
+    return (
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <h4 className={`text-[10px] font-bold uppercase ${color}`}>{side === 'black' ? 'Black' : 'White'}</h4>
+          {teams[side]?.formation && (
+            <Badge variant="outline" className="text-[8px] px-1 py-0">{teams[side].formation}</Badge>
+          )}
+        </div>
+        <ul className="text-xs space-y-1.5">
+          {players.map((p: any, idx: number) => {
+            const pid = p.playerId ?? p.id ?? idx;
+            return (
+              <li key={pid} className="flex flex-col gap-0.5">
+                <div className="flex justify-between items-center gap-1">
+                  <span className="font-medium flex-1 truncate">{p.playerName ?? p.name}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {showPositions && (
+                      <Badge variant="secondary" className="text-[7px] px-1 py-0">{p.position ?? p.assignedPosition}</Badge>
+                    )}
+                    {!match.completed && (
+                      <button
+                        className="text-muted-foreground/40 hover:text-destructive"
+                        onClick={() => removePlayer(pid, side)}
+                        data-testid={`button-remove-player-${pid}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {showRatings && (
+                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+                    <span>{p.ratingUsed ?? p.rating}</span>
+                    {p.usedOffHand && <span className="text-cyan-400">(Off-hand)</span>}
+                    {p.ratingDelta !== undefined && p.ratingDelta !== 0 && (
+                      <span className={p.ratingDelta > 0 ? 'text-green-400' : 'text-red-400'}>
+                        {p.ratingDelta > 0 ? '+' : ''}{p.ratingDelta}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+        {!match.completed && (
+          <div className="mt-2">
+            {pickerFor === side ? (
+              <PlayerPickerInline
+                allPlayers={allPlayers}
+                excludeIds={allMatchIds}
+                onSelect={(p) => addPlayer(p, side)}
+                onClose={() => setPickerFor(null)}
+              />
+            ) : (
+              <button
+                className={`flex items-center gap-1 text-[10px] text-muted-foreground hover:${side === 'black' ? 'text-primary' : 'text-cyan-400'} transition-colors`}
+                onClick={() => setPickerFor(side)}
+                data-testid={`button-add-${side}`}
+              >
+                <UserPlus className="h-3 w-3" />
+                + Add {side === 'black' ? 'Black' : 'White'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Card className={`relative overflow-hidden border-border/50 ${match.completed ? 'bg-card/50' : 'bg-card shadow-lg ring-1 ring-primary/20'}`}>
@@ -637,9 +936,9 @@ function MatchCard({
               <div className="text-3xl font-display font-black">
                 {match.completed ? match.blackScore : '-'}
               </div>
-              {showRatings && teams?.black?.players?.length > 0 && (
+              {showRatings && editedBlack.length > 0 && (
                 <div className="text-[10px] text-muted-foreground mt-0.5">
-                  Avg {Math.round(teams.black.players.reduce((s: number, p: any) => s + (p.ratingUsed ?? p.rating ?? 0), 0) / teams.black.players.length)}
+                  Avg {calcAvg(editedBlack)}
                 </div>
               )}
             </div>
@@ -653,9 +952,9 @@ function MatchCard({
               <div className="text-3xl font-display font-black">
                 {match.completed ? match.whiteScore : '-'}
               </div>
-              {showRatings && teams?.white?.players?.length > 0 && (
+              {showRatings && editedWhite.length > 0 && (
                 <div className="text-[10px] text-muted-foreground mt-0.5">
-                  Avg {Math.round(teams.white.players.reduce((s: number, p: any) => s + (p.ratingUsed ?? p.rating ?? 0), 0) / teams.white.players.length)}
+                  Avg {calcAvg(editedWhite)}
                 </div>
               )}
             </div>
@@ -663,68 +962,8 @@ function MatchCard({
 
           <CollapsibleContent>
             <div className="grid grid-cols-2 gap-4 py-2 border-t border-border/30 mt-2">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <h4 className="text-[10px] font-bold uppercase text-primary">Black</h4>
-                  {teams.black.formation && (
-                    <Badge variant="outline" className="text-[8px] px-1 py-0">{teams.black.formation}</Badge>
-                  )}
-                </div>
-                <ul className="text-xs space-y-1.5">
-                  {teams.black.players.map((p: any, idx: number) => (
-                    <li key={p.playerId ?? p.id ?? idx} className="flex flex-col gap-0.5">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">{p.playerName ?? p.name}</span>
-                        {showPositions && (
-                          <Badge variant="secondary" className="text-[7px] px-1 py-0">{p.position ?? p.assignedPosition}</Badge>
-                        )}
-                      </div>
-                      {showRatings && (
-                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
-                          <span>{p.ratingUsed || p.rating}</span>
-                          {p.usedOffHand && <span className="text-cyan-400">(Off-hand)</span>}
-                          {p.ratingDelta !== undefined && p.ratingDelta !== 0 && (
-                            <span className={p.ratingDelta > 0 ? 'text-green-400' : 'text-red-400'}>
-                              {p.ratingDelta > 0 ? '+' : ''}{p.ratingDelta}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <h4 className="text-[10px] font-bold uppercase text-cyan-400">White</h4>
-                  {teams.white.formation && (
-                    <Badge variant="outline" className="text-[8px] px-1 py-0">{teams.white.formation}</Badge>
-                  )}
-                </div>
-                <ul className="text-xs space-y-1.5">
-                  {teams.white.players.map((p: any, idx: number) => (
-                    <li key={p.playerId ?? p.id ?? idx} className="flex flex-col gap-0.5">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">{p.playerName ?? p.name}</span>
-                        {showPositions && (
-                          <Badge variant="secondary" className="text-[7px] px-1 py-0">{p.position ?? p.assignedPosition}</Badge>
-                        )}
-                      </div>
-                      {showRatings && (
-                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
-                          <span>{p.ratingUsed || p.rating}</span>
-                          {p.usedOffHand && <span className="text-cyan-400">(Off-hand)</span>}
-                          {p.ratingDelta !== undefined && p.ratingDelta !== 0 && (
-                            <span className={p.ratingDelta > 0 ? 'text-green-400' : 'text-red-400'}>
-                              {p.ratingDelta > 0 ? '+' : ''}{p.ratingDelta}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {renderTeamList(editedBlack, 'black', 'text-primary')}
+              {renderTeamList(editedWhite, 'white', 'text-cyan-400')}
             </div>
           </CollapsibleContent>
 
@@ -755,7 +994,7 @@ function MatchCard({
                 </div>
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1 h-10" onClick={onCancelScoring} data-testid="button-cancel-scoring">Cancel</Button>
-                  <Button className="flex-1 h-10" onClick={onComplete} data-testid="button-submit-score">Submit Result</Button>
+                  <Button className="flex-1 h-10" onClick={() => onComplete(buildTeams())} data-testid="button-submit-score">Submit Result</Button>
                 </div>
               </div>
             ) : (
@@ -789,7 +1028,7 @@ function MatchCard({
               </div>
               <div className="text-[10px] text-muted-foreground flex items-center gap-1">
                 <LayoutGrid className="h-3 w-3" />
-                {(teams.black?.players?.length || 0) + (teams.white?.players?.length || 0)} players
+                {editedBlack.length + editedWhite.length} players
               </div>
             </div>
           )}

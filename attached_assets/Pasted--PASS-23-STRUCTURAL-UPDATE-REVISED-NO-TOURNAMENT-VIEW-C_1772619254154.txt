@@ -1,0 +1,150 @@
+==============================
+PASS 23 – STRUCTURAL UPDATE
+(REVISED – NO TOURNAMENT VIEW CHANGES)
+==============================
+
+---------------------------------------
+1️⃣  TWO-POOL SCHEDULING FIX (4 & 6 TEAMS)
+---------------------------------------
+
+IMPORTANT:
+• 5-team logic must remain EXACTLY as currently implemented.
+• Do not modify 5-team distribution.
+
+RULES:
+
+• 4 Teams (each plays 3 matches)
+  - Total matches: 6
+  - Each round:
+        Pool A → 1 match
+        Pool B → 1 match
+  - No byes.
+  - Each team must:
+        Play 3 total matches
+        Have distribution:
+            Either 2A / 1B
+            Or     1A / 2B
+  - Exactly 2 teams should end 2A/1B
+  - Exactly 2 teams should end 1A/2B
+  - No duplicate opponents
+  - No team appears twice in same round
+
+• 6 Teams (each plays 5 matches)
+  - Total matches: 15
+  - Each round:
+        Pool A → 1 match
+        Pool B → 1 match
+        2 teams sit out
+  - Each team must:
+        Play 5 total matches
+        Pool distribution:
+            Either 3A / 2B
+            Or     2A / 3B
+  - Distribution imbalance must be even across all teams.
+  - Avoid long consecutive same-pool streaks if possible.
+
+IMPLEMENTATION STRATEGY:
+
+1. Generate round-robin fixtures normally.
+2. After fixtures exist, run pool balancing assignment:
+
+function assignPoolsBalanced(fixtures, teamCount):
+    initialise poolCountA = {}
+    initialise poolCountB = {}
+    initialise lastPoolPlayed = {}
+
+    for each round:
+        assign fixtures within round:
+            choose pool for each match such that:
+                • both teams stay closest to target distribution
+                • avoids repeating same pool as last round where possible
+                • does not exceed target max (3 for 6 teams, 2 for 4 teams)
+                • fills both Pool A and Pool B
+        update poolCountA/B
+        update lastPoolPlayed
+
+3. Persist pool assignment into tournament schedule state.
+
+Do NOT regenerate schedule on reload if stored schedule exists.
+
+---------------------------------------
+2️⃣  EDITABLE RESULTS SYSTEM
+---------------------------------------
+
+Applies to:
+• Normal match results
+• Tournament matches (before finalisation only)
+
+EDITING RULE:
+
+Editing allowed only while:
+    result.status === "pending"
+
+After:
+    result.status === "finalised"
+→ Editing disabled completely.
+
+Inside each result panel add:
+
+[ + Add Black ]
+[ + Add White ]
+
+Behaviour:
+
+When clicked:
+• Open searchable dropdown of full player list.
+• Allow multiple selections.
+• On confirm:
+      - Add selected players to chosen team
+      - Update team average rating immediately
+      - Recalculate expected result probability
+      - DO NOT apply rating change yet
+
+Each player row inside panel must include:
+    small remove button (✕)
+
+Removing a player:
+    - Removes from that match
+    - Recalculates team average immediately
+
+CRITICAL:
+No player rating is changed until:
+    result is finalised.
+
+Tournament-specific rule:
+Editing only allowed before tournament is finalised.
+Once tournament complete:
+    Editing disabled.
+
+---------------------------------------
+3️⃣  POOL ASSIGNMENT PERSISTENCE SAFETY
+---------------------------------------
+
+When reopening tournament:
+
+• Preserve stored pool mode (1 or 2 pools).
+• Do NOT default to 1 pool.
+• If schedule already exists:
+      Load stored schedule exactly as saved.
+      Do NOT regenerate.
+
+---------------------------------------
+4️⃣  SAFETY CHECKS
+---------------------------------------
+
+Ensure:
+
+• No team appears twice in same round.
+• No empty pool slots.
+• Correct total matches per team.
+• 5-team scheduling untouched.
+• Rating toggle in settings still works.
+• Average team rating display remains unchanged.
+• No impact to generate modes.
+• No impact to 1-pool tournaments.
+• No UI restructuring of tournament standings.
+• No modification to tournament player-level view logic.
+
+---------------------------------------
+END PASS 23 (REVISED CLEAN VERSION)
+---------------------------------------

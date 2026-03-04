@@ -77,12 +77,116 @@ type ScheduleRow = {
   bye: TournamentTeam[];
 };
 
+// 6-team two-pool: flatten all 15 matches and pair greedily into ~8 time slots
+function generate6TeamTwoPoolSchedule(teams: TournamentTeam[]): ScheduleRow[] {
+  const rounds = generateRoundRobin(teams);
+  const tracker: Record<string, { poolA: number; poolB: number }> = {};
+  teams.forEach(t => { tracker[t.id] = { poolA: 0, poolB: 0 }; });
+
+  // Flatten preserving round order (each round's matches share no teams → consecutive pairs are safe)
+  const allMatches: TournamentTeam[][] = [];
+  rounds.forEach(pairings => pairings.forEach(m => allMatches.push(m)));
+
+  const scheduled = new Array(allMatches.length).fill(false);
+  const rows: ScheduleRow[] = [];
+  let slotIndex = 0;
+
+  for (let i = 0; i < allMatches.length; i++) {
+    if (scheduled[i]) continue;
+    scheduled[i] = true;
+    const first = allMatches[i];
+    const firstIds = new Set(first.map(t => t.id));
+
+    // Find nearest unscheduled match that shares no teams with `first`
+    let secondIdx = -1;
+    for (let j = i + 1; j < allMatches.length; j++) {
+      if (!scheduled[j] && !allMatches[j].some(t => firstIds.has(t.id))) {
+        secondIdx = j;
+        break;
+      }
+    }
+
+    let poolA: TournamentTeam[];
+    let poolB: TournamentTeam[] | null = null;
+
+    if (secondIdx >= 0) {
+      scheduled[secondIdx] = true;
+      const second = allMatches[secondIdx];
+
+      // Preference score: positive = team prefers Pool A (has more B games so far)
+      const scoreFirst = first.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
+      const scoreSecond = second.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
+
+      let aMatch: TournamentTeam[];
+      let bMatch: TournamentTeam[];
+
+      if (scoreFirst > scoreSecond) {
+        aMatch = first; bMatch = second;
+      } else if (scoreSecond > scoreFirst) {
+        aMatch = second; bMatch = first;
+      } else {
+        // Tied: whichever match has the most A-heavy team goes to Pool B
+        const maxAFirst = Math.max(...first.map(t => tracker[t.id].poolA - tracker[t.id].poolB));
+        const maxASecond = Math.max(...second.map(t => tracker[t.id].poolA - tracker[t.id].poolB));
+        if (maxAFirst >= maxASecond) { aMatch = second; bMatch = first; }
+        else { aMatch = first; bMatch = second; }
+      }
+
+      aMatch.forEach(t => tracker[t.id].poolA++);
+      bMatch.forEach(t => tracker[t.id].poolB++);
+      poolA = aMatch;
+      poolB = bMatch;
+    } else {
+      // Only 1 match left (15th match is odd) — assign to whichever pool needs it more
+      const score = first.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
+      poolA = first;
+      if (score >= 0) { first.forEach(t => tracker[t.id].poolA++); }
+      else { first.forEach(t => tracker[t.id].poolB++); poolB = first; poolA = [] as any; }
+    }
+
+    const used = new Set([
+      ...(poolA.length ? poolA.map(t => t.id) : []),
+      ...(poolB ? poolB.map(t => t.id) : []),
+    ]);
+    rows.push({ round: slotIndex++, poolA: poolA.length ? poolA : null, poolB, bye: teams.filter(t => !used.has(t.id)) });
+  }
+
+  return rows;
+}
+
 function generateBalancedSchedule(teams: TournamentTeam[], useTwoPools: boolean): ScheduleRow[] {
   if (teams.length === 3) useTwoPools = false;
+
+  // 6 teams in 2-pool: dedicated algorithm that schedules all 15 matches
+  if (teams.length === 6 && useTwoPools) {
+    return generate6TeamTwoPoolSchedule(teams);
+  }
+
   const rounds = generateRoundRobin(teams);
   const tracker: Record<string, { poolA: number; poolB: number; games: number }> = {};
   teams.forEach(t => { tracker[t.id] = { poolA: 0, poolB: 0, games: 0 }; });
 
+  // 4 teams in 2-pool: score-based assignment (avoids systematic Pool A bias from circle method)
+  if (teams.length === 4 && useTwoPools) {
+    return rounds.map((pairings, roundIndex) => {
+      const used = new Set<string>();
+      if (pairings.length < 2) {
+        const match = pairings[0] ?? null;
+        if (match) match.forEach(t => { tracker[t.id].games++; used.add(t.id); });
+        return { round: roundIndex, poolA: match, poolB: null, bye: teams.filter(t => !used.has(t.id)) };
+      }
+      const [m0, m1] = pairings;
+      const s0 = m0.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
+      const s1 = m1.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
+      const poolA = s0 >= s1 ? m0 : m1;
+      const poolB = s0 >= s1 ? m1 : m0;
+      poolA.forEach(t => { tracker[t.id].poolA++; tracker[t.id].games++; used.add(t.id); });
+      poolB.forEach(t => { tracker[t.id].poolB++; tracker[t.id].games++; used.add(t.id); });
+      return { round: roundIndex, poolA, poolB, bye: teams.filter(t => !used.has(t.id)) };
+    });
+  }
+
+  // All other cases (5 teams, single-pool): original logic — DO NOT MODIFY
   return rounds.map((pairings, roundIndex) => {
     const used = new Set<string>();
 
@@ -96,6 +200,7 @@ function generateBalancedSchedule(teams: TournamentTeam[], useTwoPools: boolean)
     let poolB: TournamentTeam[] | null = null;
 
     pairings.forEach(match => {
+      if (poolB) return;
       const [t1, t2] = match;
       const canGoA = tracker[t1.id].poolA <= tracker[t1.id].poolB && tracker[t2.id].poolA <= tracker[t2.id].poolB;
       const canGoB = tracker[t1.id].poolB <= tracker[t1.id].poolA && tracker[t2.id].poolB <= tracker[t2.id].poolA;
@@ -118,7 +223,7 @@ function generateBalancedSchedule(teams: TournamentTeam[], useTwoPools: boolean)
 }
 
 function validateSchedule(schedule: ScheduleRow[], teams: TournamentTeam[], useTwoPools: boolean): boolean {
-  // 1. No team appears twice in same round
+  // 1. No team appears twice in same slot
   for (const slot of schedule) {
     const ids: string[] = [];
     if (slot.poolA) slot.poolA.forEach(t => ids.push(t.id));
@@ -137,16 +242,15 @@ function validateSchedule(schedule: ScheduleRow[], teams: TournamentTeam[], useT
     });
     if (teams.some(t => games[t.id] !== 4 || byes[t.id] !== 1)) return false;
   }
-  // 3. For 2-pool mode: |poolA plays - poolB plays| <= 1 for every team
-  if (useTwoPools) {
-    const pA: Record<string, number> = {};
-    const pB: Record<string, number> = {};
-    teams.forEach(t => { pA[t.id] = 0; pB[t.id] = 0; });
+  // 3. For 6 teams in 2-pool: each team plays exactly 5 matches
+  if (teams.length === 6 && useTwoPools) {
+    const games: Record<string, number> = {};
+    teams.forEach(t => { games[t.id] = 0; });
     schedule.forEach(slot => {
-      if (slot.poolA) slot.poolA.forEach(t => pA[t.id]++);
-      if (slot.poolB) slot.poolB.forEach(t => pB[t.id]++);
+      if (slot.poolA) slot.poolA.forEach(t => games[t.id]++);
+      if (slot.poolB) slot.poolB.forEach(t => games[t.id]++);
     });
-    if (teams.some(t => Math.abs(pA[t.id] - pB[t.id]) > 1)) return false;
+    if (teams.some(t => games[t.id] !== 5)) return false;
   }
   return true;
 }

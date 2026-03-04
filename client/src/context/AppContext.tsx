@@ -21,7 +21,7 @@ interface AppState extends AppData {
   updatePlayer: (id: number, updates: Partial<Player>) => void;
   deletePlayer: (id: number) => void;
   saveMatchResult: (result: Omit<Match, "id">) => number;
-  completeMatch: (id: number, blackScore: number, whiteScore: number, tournamentMode?: boolean) => void;
+  completeMatch: (id: number, blackScore: number, whiteScore: number, tournamentMode?: boolean, overrideTeams?: { black: any; white: any }) => void;
   deleteMatchResult: (id: number) => void;
   deleteMatchResultWithReversal: (id: number) => void;
   resetAllPlayerStats: () => void;
@@ -150,7 +150,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newMatch.id;
   }, []);
 
-  const completeMatch = useCallback((id: number, blackScore: number, whiteScore: number, tournamentMode: boolean = false) => {
+  const completeMatch = useCallback((id: number, blackScore: number, whiteScore: number, tournamentMode: boolean = false, overrideTeams?: { black: any; white: any }) => {
     console.log("[completeMatch] Running for match id:", id, "scores:", blackScore, "-", whiteScore);
     setState(prev => {
       const match = prev.matchResults.find(m => m.id === id);
@@ -159,7 +159,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return prev;
       }
 
-      const teams = match.teams as any;
+      const teams = overrideTeams ?? (match.teams as any);
       const kFactorSetting = prev.adminSettings.find(s => s.key === "rating_strength");
       const kFactor = kFactorSetting ? parseInt(kFactorSetting.value as string) : 32;
 
