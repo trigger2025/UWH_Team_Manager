@@ -1,0 +1,112 @@
+==============================
+PASS 26 – TOURNAMENT SNAPSHOT REBUILD FIX
+==============================
+
+PROBLEM:
+Tournament editable rosters update UI
+but rating delta calculations still reference
+original stored match snapshots.
+
+GOAL:
+When players are added/removed in active tournament:
+- Update match snapshots
+- Update delta calculation pool
+- Ensure final rating changes apply ONLY to current roster
+
+---------------------------------------
+1️⃣  CORE RULE CHANGE
+---------------------------------------
+
+Tournament matches must NOT permanently store
+a fixed player snapshot list.
+
+Instead:
+
+Each match should store:
+    - teamAId
+    - teamBId
+    - result (W/L/D)
+    - rating deltas (calculated on completion)
+    - snapshot of ratingBefore PER PLAYER at match time
+
+But the PLAYER LIST for each team
+must always reference the CURRENT team roster
+while tournament.status === "active"
+
+---------------------------------------
+2️⃣  ON PLAYER ADD (ACTIVE TOURNAMENT)
+---------------------------------------
+
+For each pending match involving that team:
+
+    • Add new player to match snapshot
+    • Set:
+          ratingBefore = currentPlayer.rating
+          ratingDelta = 0
+    • Recalculate expected win probability
+
+For each COMPLETED match:
+
+    • DO NOT retroactively change match outcome
+    • Add player with:
+          ratingBefore = current rating
+          ratingDelta = 0
+    (They did not play that match.)
+
+---------------------------------------
+3️⃣  ON PLAYER REMOVE (ACTIVE TOURNAMENT)
+---------------------------------------
+
+For each match involving that team:
+
+    IF match.status === "pending":
+        Remove player from snapshot completely
+
+    IF match.status === "completed":
+        Remove player’s ratingDelta from that match
+        Remove their snapshot entry
+        Recalculate team aggregate delta
+
+---------------------------------------
+4️⃣  TOURNAMENT FINALISATION LOGIC
+---------------------------------------
+
+When tournament.status changes to "completed":
+
+For each match:
+    For each player in match snapshot:
+        Apply ratingDelta to player.rating
+
+CRITICAL:
+Only apply deltas for players that still exist
+in the team roster at finalisation.
+
+---------------------------------------
+5️⃣  AGGREGATE VIEW FIX
+---------------------------------------
+
+Tournament standings player-level expansion:
+
+Instead of summing stored deltas blindly,
+recalculate netChange as:
+
+    sum(match.ratingDelta for matches
+        where player exists in snapshot)
+
+This prevents removed players from retaining deltas.
+
+---------------------------------------
+6️⃣  DO NOT MODIFY
+---------------------------------------
+
+• Scheduling logic
+• 5-team 2-pool special logic
+• Normal results system
+• Rating toggle
+• Average rating display
+• Team naming
+• Progress bar
+
+---------------------------------------
+END PASS 26
+---------------------------------------

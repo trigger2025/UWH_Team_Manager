@@ -876,17 +876,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const whiteScore = fixture.result === "B" ? 1 : fixture.result === "A" ? 0 : 0;
         const draw = fixture.result === "draw";
 
+        // Use CURRENT roster from t.teams (not stale fixture snapshot).
+        // This ensures: removed players get no delta, added players do.
+        const currentTeamA = t.teams.find((team: TournamentTeam) => team.id === fixture.teamA.id);
+        const currentTeamB = t.teams.find((team: TournamentTeam) => team.id === fixture.teamB.id);
+        if (!currentTeamA || !currentTeamB) return;
+
         const teamAAsGenerated = {
           color: "Black" as const,
           formation: fixture.teamA.formation,
-          players: fixture.teamA.players,
-          totalRating: fixture.teamA.totalRating,
+          players: currentTeamA.players,
+          totalRating: currentTeamA.totalRating,
         };
         const teamBAsGenerated = {
           color: "White" as const,
           formation: fixture.teamB.formation,
-          players: fixture.teamB.players,
-          totalRating: fixture.teamB.totalRating,
+          players: currentTeamB.players,
+          totalRating: currentTeamB.totalRating,
         };
 
         const adjustments = calculateRatingAdjustments(
