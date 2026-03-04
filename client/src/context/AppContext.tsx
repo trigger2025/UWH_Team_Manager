@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams, TeamTemplate, TeamTemplateStructure, PlayerWithAssignedFormationRole, TournamentTeam, TournamentFixture, TournamentState, TournamentHistoryEntry, PlayerSnapshot } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, GenerationWorkspace, GeneratedTeamsSnapshot, GeneratedTeam, FormationType, GenerationMode, VisibilitySettings, TwoPoolsGeneratedTeams, TeamTemplate, TeamTemplateStructure, PlayerWithAssignedFormationRole, TournamentTeam, TournamentFixture, TournamentState, TournamentHistoryEntry, PlayerSnapshot, AttendanceTracking, PoolTracking, DEFAULT_ATTENDANCE_TRACKING, DEFAULT_POOL_TRACKING } from "@shared/schema";
 import { storage, AppData, DEFAULT_GENERATION_WORKSPACE, DEFAULT_VISIBILITY_SETTINGS } from "@/lib/storage";
 import { calculateRatingAdjustments, applyRatingAdjustments } from "@/lib/rating-logic";
 import { generateRoundRobin } from "@/lib/team-logic";
@@ -54,6 +54,11 @@ interface AppState extends AppData {
   deleteTournamentHistory: (id: number) => void;
   updateTournamentTeamRoster: (teamId: string, newPlayers: PlayerWithAssignedFormationRole[]) => void;
   tournamentHistory: TournamentHistoryEntry[];
+  // Rotation tracking functions
+  markAttendanceAllowed: (playerId: number) => void;
+  markAttendanceDenied: (playerId: number) => void;
+  recordPoolPlay: (playerId: number, pool: "A" | "B") => void;
+  updateRotationCounters: (playerId: number, attendance: AttendanceTracking, poolTracking: PoolTracking) => void;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -1076,6 +1081,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
+  const markAttendanceAllowed = useCallback((playerId: number) => {
+    setState(prev => ({
+      ...prev,
+      players: prev.players.map(p => {
+        if (p.id !== playerId) return p;
+        const at = (p.attendanceTracking as any) ?? { ...DEFAULT_ATTENDANCE_TRACKING };
+        return {
+          ...p,
+          attendanceTracking: {
+            ...at,
+            sessionsAllowedCount: (at.sessionsAllowedCount ?? 0) + 1,
+            sessionsSinceLastAllowed: 0,
+            sessionsSinceLastDenied: (at.sessionsSinceLastDenied ?? 0) + 1,
+            lastStatus: "allowed",
+          },
+        };
+      }),
+    }));
+  }, []);
+
+  const markAttendanceDenied = useCallback((playerId: number) => {
+    setState(prev => ({
+      ...prev,
+      players: prev.players.map(p => {
+        if (p.id !== playerId) return p;
+        const at = (p.attendanceTracking as any) ?? { ...DEFAULT_ATTENDANCE_TRACKING };
+        return {
+          ...p,
+          attendanceTracking: {
+            ...at,
+            sessionsDeniedCount: (at.sessionsDeniedCount ?? 0) + 1,
+            sessionsSinceLastDenied: 0,
+            sessionsSinceLastAllowed: (at.sessionsSinceLastAllowed ?? 0) + 1,
+            lastStatus: "denied",
+          },
+        };
+      }),
+    }));
+  }, []);
+
+  const recordPoolPlay = useCallback((playerId: number, pool: "A" | "B") => {
+    setState(prev => ({
+      ...prev,
+      players: prev.players.map(p => {
+        if (p.id !== playerId) return p;
+        const pt = (p.poolTracking as any) ?? { ...DEFAULT_POOL_TRACKING };
+        if (pool === "A") {
+          return {
+            ...p,
+            poolTracking: {
+              ...pt,
+              timesInAPool: (pt.timesInAPool ?? 0) + 1,
+              sessionsSinceLastAPool: 0,
+              sessionsSinceLastBPool: (pt.sessionsSinceLastBPool ?? 0) + 1,
+            },
+          };
+        } else {
+          return {
+            ...p,
+            poolTracking: {
+              ...pt,
+              timesInBPool: (pt.timesInBPool ?? 0) + 1,
+              sessionsSinceLastBPool: 0,
+              sessionsSinceLastAPool: (pt.sessionsSinceLastAPool ?? 0) + 1,
+            },
+          };
+        }
+      }),
+    }));
+  }, []);
+
+  const updateRotationCounters = useCallback((playerId: number, attendance: AttendanceTracking, poolTracking: PoolTracking) => {
+    setState(prev => ({
+      ...prev,
+      players: prev.players.map(p => {
+        if (p.id !== playerId) return p;
+        return {
+          ...p,
+          attendanceTracking: { ...attendance },
+          poolTracking: { ...poolTracking },
+        };
+      }),
+    }));
+  }, []);
+
   return (
     <AppContext.Provider value={{
       ...state,
@@ -1113,6 +1203,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deleteTournamentHistory,
       updateTournamentTeamRoster,
       tournamentHistory: state.tournamentHistory || [],
+      markAttendanceAllowed,
+      markAttendanceDenied,
+      recordPoolPlay,
+      updateRotationCounters,
     }}>
       {children}
     </AppContext.Provider>

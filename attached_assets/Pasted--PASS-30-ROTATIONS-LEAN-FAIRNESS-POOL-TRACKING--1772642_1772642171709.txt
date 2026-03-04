@@ -1,0 +1,196 @@
+==============================
+PASS 30 – ROTATIONS (LEAN FAIRNESS + POOL TRACKING)
+==============================
+
+GOAL:
+Add a lightweight attendance fairness tracker and A/B pool rotation tracker.
+No automation. No impact to generation, ratings, scheduling, or results logic.
+Purely tracking + recommendation + manual override.
+
+---------------------------------------
+1️⃣ DATA MODEL EXTENSION
+---------------------------------------
+
+Extend player model with:
+
+attendanceTracking: {
+    sessionsAllowedCount: number,
+    sessionsDeniedCount: number,
+    sessionsSinceLastAllowed: number,
+    sessionsSinceLastDenied: number,
+    lastStatus: "allowed" | "denied" | null
+},
+
+poolTracking: {
+    timesInAPool: number,
+    timesInBPool: number,
+    sessionsSinceLastAPool: number,
+    sessionsSinceLastBPool: number
+}
+
+INITIALISE ALL VALUES TO 0 FOR NEW PLAYERS.
+
+If loading older players without these fields,
+auto-initialise missing fields to 0 safely.
+
+---------------------------------------
+2️⃣ ROTATIONS TAB – ATTENDANCE SECTION
+---------------------------------------
+
+For each player display:
+
+• Name
+• Allowed Count
+• Denied Count
+• Since Allowed
+• Since Denied
+• Priority Indicator
+
+---------------------------------------
+PRIORITY INDICATOR LOGIC
+---------------------------------------
+
+IF player has tag "SO Weds":
+    Display: EXEMPT
+    No highlighting
+
+ELSE:
+
+IF sessionsSinceLastAllowed >= 3
+   OR (sessionsDeniedCount - sessionsAllowedCount) >= 2:
+       priority = HIGH (red)
+
+ELSE IF sessionsSinceLastAllowed == 2:
+       priority = MEDIUM (amber)
+
+ELSE:
+       priority = NORMAL (green)
+
+This is advisory only.
+
+---------------------------------------
+3️⃣ ATTENDANCE ACTION BUTTONS
+---------------------------------------
+
+Each player row includes:
+
+[ Mark Allowed ]
+[ Mark Denied ]
+
+When Mark Allowed clicked:
+
+    sessionsAllowedCount += 1
+    sessionsSinceLastAllowed = 0
+    sessionsSinceLastDenied += 1
+    lastStatus = "allowed"
+
+Persist immediately.
+
+When Mark Denied clicked:
+
+    sessionsDeniedCount += 1
+    sessionsSinceLastDenied = 0
+    sessionsSinceLastAllowed += 1
+    lastStatus = "denied"
+
+Persist immediately.
+
+---------------------------------------
+4️⃣ MANUAL OVERRIDE (IMPORTANT FOR TESTING)
+---------------------------------------
+
+Each player row includes:
+
+[ Edit Counters ]
+
+Opens modal allowing manual editing of:
+
+Attendance:
+    sessionsAllowedCount
+    sessionsDeniedCount
+    sessionsSinceLastAllowed
+    sessionsSinceLastDenied
+
+Pool:
+    timesInAPool
+    timesInBPool
+    sessionsSinceLastAPool
+    sessionsSinceLastBPool
+
+On Save:
+    Overwrite values directly
+    Do NOT auto-adjust other counters
+    Persist immediately
+
+This is intentional to allow correction/testing.
+
+---------------------------------------
+5️⃣ POOL ROTATION TRACKING
+---------------------------------------
+
+Display per player:
+
+• A Pool Count
+• B Pool Count
+• Since A
+• Since B
+
+Buttons:
+
+[ Played A ]
+[ Played B ]
+
+When Played A clicked:
+
+    timesInAPool += 1
+    sessionsSinceLastAPool = 0
+    sessionsSinceLastBPool += 1
+
+Persist immediately.
+
+When Played B clicked:
+
+    timesInBPool += 1
+    sessionsSinceLastBPool = 0
+    sessionsSinceLastAPool += 1
+
+Persist immediately.
+
+---------------------------------------
+6️⃣ POOL ROTATION SUGGESTIONS (ADVISORY)
+---------------------------------------
+
+Display suggestion text if applicable:
+
+IF sessionsSinceLastAPool >= 3:
+    "Consider A Pool"
+
+IF sessionsSinceLastBPool >= 3:
+    "Consider B Pool"
+
+IF timesInAPool - timesInBPool >= 3:
+    "Heavy A exposure"
+
+IF timesInBPool - timesInAPool >= 3:
+    "Heavy B exposure"
+
+These are NOT automated decisions.
+No restrictions applied.
+Purely informational.
+
+---------------------------------------
+7️⃣ SAFETY REQUIREMENTS
+---------------------------------------
+
+• Do NOT modify generate logic
+• Do NOT modify ratings
+• Do NOT modify results system
+• Do NOT modify scheduling
+• Do NOT auto-select attendees
+• No automatic pool swapping
+
+This pass is tracking + recommendation only.
+
+---------------------------------------
+END PASS 30
+---------------------------------------

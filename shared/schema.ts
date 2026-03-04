@@ -54,6 +54,12 @@ export const players = pgTable("players", {
   
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
+
+  // Attendance fairness tracking
+  attendanceTracking: jsonb("attendance_tracking").notNull().default({}),
+
+  // Pool A/B rotation tracking
+  poolTracking: jsonb("pool_tracking").notNull().default({}),
 });
 
 export const pools = pgTable("pools", {
@@ -98,6 +104,38 @@ export const adminSettings = pgTable("admin_settings", {
 });
 
 // --- Complex Types (Not stored directly in DB or used as wrappers) ---
+
+// Attendance fairness tracking per player
+export interface AttendanceTracking {
+  sessionsAllowedCount: number;
+  sessionsDeniedCount: number;
+  sessionsSinceLastAllowed: number;
+  sessionsSinceLastDenied: number;
+  lastStatus: "allowed" | "denied" | null;
+}
+
+// Pool A/B rotation tracking per player
+export interface PoolTracking {
+  timesInAPool: number;
+  timesInBPool: number;
+  sessionsSinceLastAPool: number;
+  sessionsSinceLastBPool: number;
+}
+
+export const DEFAULT_ATTENDANCE_TRACKING: AttendanceTracking = {
+  sessionsAllowedCount: 0,
+  sessionsDeniedCount: 0,
+  sessionsSinceLastAllowed: 0,
+  sessionsSinceLastDenied: 0,
+  lastStatus: null,
+};
+
+export const DEFAULT_POOL_TRACKING: PoolTracking = {
+  timesInAPool: 0,
+  timesInBPool: 0,
+  sessionsSinceLastAPool: 0,
+  sessionsSinceLastBPool: 0,
+};
 
 // Player with assigned formation role during team generation
 export interface PlayerWithAssignedFormationRole extends Player {

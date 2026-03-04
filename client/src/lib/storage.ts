@@ -1,4 +1,4 @@
-import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, InsertPlayer, GenerationWorkspace, GeneratedTeamsSnapshot, VisibilitySettings, TournamentHistoryEntry } from "@shared/schema";
+import { Player, Match, AdminSettings, PoolRotationEntry, PresetTeam, InsertPlayer, GenerationWorkspace, GeneratedTeamsSnapshot, VisibilitySettings, TournamentHistoryEntry, DEFAULT_ATTENDANCE_TRACKING, DEFAULT_POOL_TRACKING } from "@shared/schema";
 
 export const STORAGE_KEYS = {
   PLAYERS: "uwh_players",
@@ -149,6 +149,14 @@ export const storage = {
       rating: typeof p.rating === 'number' ? Math.round(Math.min(Math.max(p.rating <= 10 ? p.rating * 100 : p.rating, 0), 1000)) : 500,
       weakHandEnabled: p.weakHandEnabled ?? false,
       weakHandRating: p.weakHandEnabled ? (typeof p.weakHandRating === 'number' ? Math.round(Math.min(Math.max(p.weakHandRating <= 10 ? p.weakHandRating * 100 : p.weakHandRating, 0), 1000)) : 300) : null,
+      attendanceTracking: p.attendanceTracking ? {
+        ...DEFAULT_ATTENDANCE_TRACKING,
+        ...p.attendanceTracking,
+      } : DEFAULT_ATTENDANCE_TRACKING,
+      poolTracking: p.poolTracking ? {
+        ...DEFAULT_POOL_TRACKING,
+        ...p.poolTracking,
+      } : DEFAULT_POOL_TRACKING,
     }));
     
     const savedWorkspace = this.read<any>(STORAGE_KEYS.GENERATION_WORKSPACE, null);
@@ -226,6 +234,8 @@ export const createPlayer = async (player: InsertPlayer): Promise<Player> => {
     draws: player.draws ?? 0,
     active: player.active ?? true,
     createdAt: new Date(),
+    attendanceTracking: DEFAULT_ATTENDANCE_TRACKING,
+    poolTracking: DEFAULT_POOL_TRACKING,
   };
   storage.setPlayers([...players, newPlayer]);
   return newPlayer;
