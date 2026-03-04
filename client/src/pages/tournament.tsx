@@ -10,7 +10,8 @@ import { Trophy, Swords, CheckCircle2, ChevronLeft, RotateCcw, CalendarClock, Ch
 import { useLocation } from "wouter";
 import { TournamentFixture, TournamentTeam, Player, PlayerWithAssignedFormationRole } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
-import { exportElementAsImage } from "@/lib/export-image";
+import { exportElementAsImage, ExportOptions } from "@/lib/export-image";
+import { ExportModal } from "@/components/export-modal";
 
 function getStandings(teams: TournamentTeam[], fixtures: TournamentFixture[]) {
   const standings: Record<string, { team: TournamentTeam; played: number; wins: number; draws: number; losses: number; points: number }> = {};
@@ -292,11 +293,19 @@ export default function TournamentPage() {
   const [scheduleTurnover, setScheduleTurnover] = useState(3);
   const [schedulePools, setSchedulePools] = useState<1 | 2>(1);
   const [generatedSchedule, setGeneratedSchedule] = useState<ScheduleSlot[] | null>(null);
+  const [exportTeamsOpen, setExportTeamsOpen] = useState(false);
+  const [exportScheduleOpen, setExportScheduleOpen] = useState(false);
   const scheduleRef = useRef<HTMLDivElement>(null);
   const teamsRef = useRef<HTMLDivElement>(null);
 
-  async function exportTeams() {
-    await exportElementAsImage(teamsRef.current, "tournament-teams.png");
+  async function handleExportTeamsConfirm(opts: ExportOptions) {
+    setExportTeamsOpen(false);
+    await exportElementAsImage(teamsRef.current, "tournament-teams.png", opts);
+  }
+
+  async function handleExportScheduleConfirm(_opts: ExportOptions) {
+    setExportScheduleOpen(false);
+    await exportElementAsImage(scheduleRef.current, "tournament-schedule.png");
   }
 
   // Standings expansion + player editing state
@@ -381,8 +390,8 @@ export default function TournamentPage() {
     setGeneratedSchedule(slots);
   }
 
-  async function exportSchedule() {
-    await exportElementAsImage(scheduleRef.current, "tournament-schedule.png");
+  function exportSchedule() {
+    setExportScheduleOpen(true);
   }
 
   return (
@@ -455,7 +464,7 @@ export default function TournamentPage() {
             <div className="flex items-center justify-between px-1">
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Standings</h2>
               <button
-                onClick={exportTeams}
+                onClick={() => setExportTeamsOpen(true)}
                 className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
                 data-testid="button-export-teams"
               >
@@ -762,6 +771,20 @@ export default function TournamentPage() {
           </Card>
         </div>
       </div>
+      <ExportModal
+        open={exportTeamsOpen}
+        onClose={() => setExportTeamsOpen(false)}
+        onConfirm={handleExportTeamsConfirm}
+        showOptions={true}
+        title="Export Teams"
+      />
+      <ExportModal
+        open={exportScheduleOpen}
+        onClose={() => setExportScheduleOpen(false)}
+        onConfirm={handleExportScheduleConfirm}
+        showOptions={false}
+        title="Export Schedule"
+      />
       <BottomNav />
     </div>
   );

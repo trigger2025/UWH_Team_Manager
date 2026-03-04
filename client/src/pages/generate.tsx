@@ -31,7 +31,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player, TournamentTeam } from "@shared/schema";
 import { useLocation } from "wouter";
 import { PlayerFilterBar, FilterState, defaultFilterState, applyPlayerFilter } from "@/components/player-filter-bar";
-import { exportElementAsImage } from "@/lib/export-image";
+import { exportElementAsImage, ExportOptions } from "@/lib/export-image";
+import { ExportModal } from "@/components/export-modal";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
   standard: "Standard",
@@ -64,6 +65,8 @@ export default function GeneratePage() {
   
   const { showRatings = true, showPositions = true } = visibilitySettings || {};
   const [, navigate] = useLocation();
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportTarget, setExportTarget] = useState<"standard" | "twopools" | "tournament">("standard");
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showGenerated, setShowGenerated] = useState(false);
   const [tournamentTeams, setTournamentTeams] = useState<TournamentTeam[] | null>(null);
@@ -98,12 +101,20 @@ export default function GeneratePage() {
   const twoPoolsRef = useRef<HTMLDivElement>(null);
   const tournamentTeamsRef = useRef<HTMLDivElement>(null);
 
-  async function exportTwoPoolTeams() {
-    await exportElementAsImage(twoPoolsRef.current, "pool-teams.png");
+  function openExportModal(target: "standard" | "twopools" | "tournament") {
+    setExportTarget(target);
+    setExportModalOpen(true);
   }
 
-  async function exportTeams() {
-    await exportElementAsImage(teamsRef.current, "generated-teams.png");
+  async function handleExportConfirm(opts: ExportOptions) {
+    setExportModalOpen(false);
+    if (exportTarget === "twopools") {
+      await exportElementAsImage(twoPoolsRef.current, "pool-teams.png", opts);
+    } else if (exportTarget === "tournament") {
+      await exportElementAsImage(tournamentTeamsRef.current, "tournament-teams.png", opts);
+    } else {
+      await exportElementAsImage(teamsRef.current, "generated-teams.png", opts);
+    }
   }
 
   // Filter to only show players (no "active" filter during generation per requirements)
@@ -1306,7 +1317,7 @@ export default function GeneratePage() {
                   <Button
                     variant="outline"
                     className="h-10 rounded-xl gap-1 text-sm"
-                    onClick={exportTwoPoolTeams}
+                    onClick={() => openExportModal("twopools")}
                     data-testid="button-export-pool-teams"
                   >
                     <Download className="h-4 w-4" />
@@ -1338,7 +1349,7 @@ export default function GeneratePage() {
                         <Trophy className="h-4 w-4 text-amber-400" />
                         {team.label}
                         {showRatings && (
-                          <Badge variant="outline" className="ml-auto text-[10px]">
+                          <Badge variant="outline" className="player-rating ml-auto text-[10px]">
                             Avg {Math.round(team.players.reduce((s, p) => s + (p.ratingUsed ?? p.rating), 0) / Math.max(team.players.length, 1))}
                           </Badge>
                         )}
@@ -1350,10 +1361,10 @@ export default function GeneratePage() {
                           <div key={player.id} className="flex items-center gap-2 py-1 border-b border-border/30 last:border-0">
                             <span className="text-sm flex-1">{player.name}</span>
                             {showPositions && player.position && (
-                              <Badge variant="secondary" className="text-[9px] py-0 px-1.5">{player.position}</Badge>
+                              <Badge variant="secondary" className="player-position text-[9px] py-0 px-1.5">{player.position}</Badge>
                             )}
                             {showRatings && (
-                              <span className="text-xs text-muted-foreground font-mono">{player.ratingUsed ?? player.rating}</span>
+                              <span className="player-rating text-xs text-muted-foreground font-mono">{player.ratingUsed ?? player.rating}</span>
                             )}
                           </div>
                         ))}
@@ -1385,7 +1396,7 @@ export default function GeneratePage() {
                   <Button
                     variant="outline"
                     className="h-10 rounded-xl gap-1 text-sm"
-                    onClick={() => exportElementAsImage(tournamentTeamsRef.current, "tournament-teams.png")}
+                    onClick={() => openExportModal("tournament")}
                     data-testid="button-export-tournament-teams"
                   >
                     <Download className="h-4 w-4" />
@@ -1479,7 +1490,7 @@ export default function GeneratePage() {
                   <Button
                     variant="outline"
                     className="h-10 rounded-xl gap-1 text-sm"
-                    onClick={exportTeams}
+                    onClick={() => openExportModal("standard")}
                     data-testid="button-export-teams"
                   >
                     <Download className="h-4 w-4" />
@@ -1499,6 +1510,13 @@ export default function GeneratePage() {
           ) : null}
         </AnimatePresence>
       </div>
+
+      <ExportModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onConfirm={handleExportConfirm}
+        showOptions={true}
+      />
 
       <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
         <DialogContent className="max-w-sm max-h-[70vh] overflow-y-auto" aria-describedby={undefined}>
@@ -1585,7 +1603,7 @@ function TeamCard({ team, colorClass, onMovePlayer, onSwapPool, poolLabel, showR
           <h3 className={`font-bold text-sm ${textColor}`}>Team {team.color}</h3>
         </div>
         {showRatings && (
-          <Badge variant="outline" className="bg-background/50 text-[10px]">
+          <Badge variant="outline" className="player-rating bg-background/50 text-[10px]">
             Avg: {avgRating}
           </Badge>
         )}
@@ -1633,7 +1651,7 @@ function PlayerRow({ player, index, isLast, onMove, onSwapPool, poolLabel, showR
         <div className="flex flex-col min-w-0">
           <span className="text-sm font-medium truncate">{player.name}</span>
           {showRatings && (
-            <span className="text-[9px] text-muted-foreground">
+            <span className="player-rating text-[9px] text-muted-foreground">
               Rating: {player.ratingUsed} {player.usedOffHand ? '(Off-hand)' : '(Main)'}
             </span>
           )}
@@ -1641,7 +1659,7 @@ function PlayerRow({ player, index, isLast, onMove, onSwapPool, poolLabel, showR
       </div>
       <div className="flex items-center gap-2">
         {showPositions && (
-          <Badge variant="secondary" className="text-[9px] font-bold uppercase tracking-tight">
+          <Badge variant="secondary" className="player-position text-[9px] font-bold uppercase tracking-tight">
             {player.assignedPosition}
           </Badge>
         )}

@@ -1,0 +1,230 @@
+==============================
+PASS 32 – CLEAN EXPORT SYSTEM (FIXED TOGGLES + NO UI SQUASH)
+==============================
+
+GOAL:
+• Restore toggle options (ratings / positions) before export
+• Prevent mobile Safari UI squashing
+• Standardise export button behaviour across ALL generation modes
+• Add export to tournament-generated teams
+• Keep schedule export simple (no toggles)
+
+------------------------------------------------------------
+1️⃣ CREATE EXPORT MODAL COMPONENT
+------------------------------------------------------------
+
+Create file:
+
+components/ExportModal.tsx
+
+------------------------------------------------------------
+CODE
+------------------------------------------------------------
+
+import { useState } from "react";
+
+export default function ExportModal({ open, onClose, onConfirm, showOptions }) {
+  const [includeRatings, setIncludeRatings] = useState(true);
+  const [includePositions, setIncludePositions] = useState(true);
+
+  if (!open) return null;
+
+  return (
+    <div className="export-overlay">
+      <div className="export-modal">
+        <h3>Export Image</h3>
+
+        {showOptions && (
+          <>
+            <label>
+              <input
+                type="checkbox"
+                checked={includeRatings}
+                onChange={() => setIncludeRatings(!includeRatings)}
+              />
+              Include Ratings
+            </label>
+
+            <label>
+              <input
+                type="checkbox"
+                checked={includePositions}
+                onChange={() => setIncludePositions(!includePositions)}
+              />
+              Include Positions
+            </label>
+          </>
+        )}
+
+        <div className="export-buttons">
+          <button onClick={onClose}>Cancel</button>
+          <button
+            onClick={() =>
+              onConfirm({ includeRatings, includePositions })
+            }
+          >
+            Download
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+------------------------------------------------------------
+2️⃣ SAFE EXPORT FUNCTION (NO DOM MUTATION)
+------------------------------------------------------------
+
+Update your export logic everywhere to this:
+
+------------------------------------------------------------
+CODE
+------------------------------------------------------------
+
+import html2canvas from "html2canvas";
+
+export async function exportTeamsImage(
+  containerId,
+  options = { includeRatings: true, includePositions: true }
+) {
+  const original = document.getElementById(containerId);
+  if (!original) return;
+
+  // Clone instead of modifying live UI
+  const clone = original.cloneNode(true);
+  clone.style.width = "1000px";
+  clone.style.maxWidth = "1000px";
+  clone.style.background = "#0f172a";
+  clone.style.padding = "20px";
+
+  // Toggle rating visibility
+  if (!options.includeRatings) {
+    clone.querySelectorAll(".player-rating").forEach(el => {
+      el.style.display = "none";
+    });
+  }
+
+  // Toggle position visibility
+  if (!options.includePositions) {
+    clone.querySelectorAll(".player-position").forEach(el => {
+      el.style.display = "none";
+    });
+  }
+
+  // Off-screen wrapper
+  const exportWrapper = document.createElement("div");
+  exportWrapper.style.position = "fixed";
+  exportWrapper.style.left = "-9999px";
+  exportWrapper.appendChild(clone);
+  document.body.appendChild(exportWrapper);
+
+  const canvas = await html2canvas(clone, {
+    scale: 2,
+    backgroundColor: "#0f172a"
+  });
+
+  const link = document.createElement("a");
+  link.download = "generated-teams.png";
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+
+  document.body.removeChild(exportWrapper);
+}
+
+------------------------------------------------------------
+3️⃣ CONNECT MODAL TO GENERATE SCREENS
+------------------------------------------------------------
+
+Where export button exists:
+
+Replace direct export call with modal trigger:
+
+------------------------------------------------------------
+CODE
+------------------------------------------------------------
+
+const [exportOpen, setExportOpen] = useState(false);
+
+<button onClick={() => setExportOpen(true)}>
+  Export
+</button>
+
+<ExportModal
+  open={exportOpen}
+  onClose={() => setExportOpen(false)}
+  showOptions={true}
+  onConfirm={(opts) => {
+    exportTeamsImage("teams-container", opts);
+    setExportOpen(false);
+  }}
+/>
+
+------------------------------------------------------------
+4️⃣ APPLY TO ALL MODES
+------------------------------------------------------------
+
+Ensure ALL team generation screens use:
+
+id="teams-container"
+
+Apply export modal to:
+
+✔ 1 Pool Generate
+✔ 2 Pool Generate
+✔ Preset 1 Pool
+✔ Preset 2 Pool
+✔ Tournament Generated Teams
+
+All must use the same bottom button layout:
+Reselect / Re-roll / Export / Confirm
+
+------------------------------------------------------------
+5️⃣ SCHEDULE EXPORT
+------------------------------------------------------------
+
+For schedule:
+
+Use container id:
+
+id="schedule-container"
+
+Trigger export without toggles:
+
+<ExportModal
+  open={exportOpen}
+  onClose={() => setExportOpen(false)}
+  showOptions={false}
+  onConfirm={() => {
+    exportTeamsImage("schedule-container");
+    setExportOpen(false);
+  }}
+/>
+
+------------------------------------------------------------
+6️⃣ ENSURE CLASS NAMES EXIST
+------------------------------------------------------------
+
+Rating text must use:
+
+className="player-rating"
+
+Position badge must use:
+
+className="player-position"
+
+If missing, add them to JSX.
+
+------------------------------------------------------------
+RESULT
+------------------------------------------------------------
+
+• Toggle modal appears before download
+• Ratings & positions correctly included/excluded
+• No UI squashing after export
+• Tournament mode now includes export
+• All generation modes share identical export behaviour
+• Fully mobile Safari safe
+
+------------------------------------------------------------
+END PASS 32
+------------------------------------------------------------
