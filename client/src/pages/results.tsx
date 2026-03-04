@@ -425,14 +425,19 @@ function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
   const { deleteTournamentHistory, visibilitySettings } = useApp();
   const { showRatings = true } = visibilitySettings || {};
   const [isOpen, setIsOpen] = useState(false);
-  const [expandedTeams, setExpandedTeams] = useState<Record<string, boolean>>({});
+  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
 
   function toggleTeam(id: string) {
-    setExpandedTeams(prev => ({ ...prev, [id]: !prev[id] }));
+    setExpandedTeamId(prev => prev === id ? null : id);
   }
 
   function getSnap(playerId: number): PlayerSnapshot | undefined {
     return (entry.playerSnapshots || []).find((s: PlayerSnapshot) => s.playerId === playerId);
+  }
+
+  function teamAvg(team: TournamentTeam): number {
+    if (!team.players.length) return 0;
+    return Math.round(team.totalRating / team.players.length);
   }
 
   const standings = entry.teams.map(team => {
@@ -446,7 +451,7 @@ function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
       else if ((f.result === "A" && isA) || (f.result === "B" && isB)) { wins++; points += 3; }
       else { losses++; }
     });
-    return { team, wins, draws, losses, points };
+    return { team, wins, draws, losses, points, avg: teamAvg(team) };
   }).sort((a, b) => b.points - a.points || b.wins - a.wins);
 
   const completedFixtures = entry.fixtures.filter((f: TournamentFixture) => f.result).length;
@@ -507,58 +512,79 @@ function TournamentHistoryCard({ entry }: { entry: TournamentHistoryEntry }) {
         </CardHeader>
         <CollapsibleContent>
           <CardContent className="px-4 pb-3 pt-0 space-y-3">
-            {/* Standings table */}
-            <div className="divide-y divide-border/30 rounded-lg border border-border/40 overflow-hidden">
+            {/* Standings table — each row clickable to expand player panel */}
+            <div className="rounded-lg border border-border/40 overflow-hidden">
               {standings.map((row, i) => (
-                <div key={row.team.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                  <span className={`font-bold w-4 text-center ${i === 0 ? "text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span>
-                  <span className="flex-1 font-medium truncate">{row.team.label}</span>
-                  <span className="text-xs text-muted-foreground shrink-0">{row.wins}W {row.draws}D {row.losses}L</span>
-                  <Badge variant={i === 0 ? "default" : "secondary"} className="text-xs font-bold min-w-[28px] text-center shrink-0">{row.points}pt</Badge>
+                <div key={row.team.id} className="divide-y divide-border/20">
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/20 transition-colors text-left"
+                    onClick={() => showRatings && toggleTeam(row.team.id)}
+                    data-testid={`button-team-summary-${row.team.id}`}
+                  >
+                    <span className={`font-bold w-4 text-center shrink-0 ${i === 0 ? "text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span>
+                    <span className="flex-1 font-medium truncate">{row.team.label}</span>
+                    {showRatings && (
+                      <span className="text-[10px] font-mono text-muted-foreground shrink-0">Avg {row.avg}</span>
+                    )}
+                    <span className="text-xs text-muted-foreground shrink-0">{row.wins}W {row.draws}D {row.losses}L</span>
+                    <Badge variant={i === 0 ? "default" : "secondary"} className="text-xs font-bold min-w-[28px] text-center shrink-0">{row.points}pt</Badge>
+                    {showRatings && (
+                      expandedTeamId === row.team.id
+                        ? <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        : <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    )}
+                  </button>
+                  {showRatings && expandedTeamId === row.team.id && (
+                    <div className="px-4 pb-2 pt-1.5 bg-muted/10 space-y-1.5">
+                      {row.team.players.map(p => {
+                        const snap = getSnap(p.id);
+                        const before = snap?.ratingBefore;
+                        const after = snap?.ratingAfter;
+                        const delta = (before !== undefined && after !== undefined) ? after - before : undefined;
+                        const color = delta === undefined ? "text-muted-foreground" : delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground";
+                        return (
+                          <div key={p.id} className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] text-foreground truncate">{p.name}</span>
+                            <span className={`text-[10px] font-mono shrink-0 ${color}`} data-testid={`text-rating-delta-${p.id}`}>
+                              {before !== undefined
+                                ? (delta !== undefined
+                                  ? `${before}  ${delta > 0 ? "+" : ""}${delta}`
+                                  : `${before}`)
+                                : "–"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
-            {/* Per-team expandable rating summary */}
-            {showRatings && (
-              <div className="space-y-1">
-                {standings.map(({ team }, i) => (
-                  <div key={team.id} className="rounded border border-border/20 overflow-hidden">
-                    <button
-                      className="w-full flex items-center gap-2 text-[10px] py-1.5 px-2 hover:bg-muted/30 transition-colors text-left"
-                      onClick={() => toggleTeam(team.id)}
-                      data-testid={`button-team-summary-${team.id}`}
-                    >
-                      <span className={`font-bold w-4 text-center shrink-0 ${i === 0 ? "text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span>
-                      <span className="flex-1 font-medium truncate">{team.label}</span>
-                      {expandedTeams[team.id] ? <ChevronUp className="h-3 w-3 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />}
-                    </button>
-                    {expandedTeams[team.id] && (
-                      <div className="px-3 pb-2 pt-1 bg-muted/10 border-t border-border/20 space-y-1.5">
-                        {team.players.map(p => {
-                          const snap = getSnap(p.id);
-                          const before = snap?.ratingBefore;
-                          const after = snap?.ratingAfter;
-                          const delta = (before !== undefined && after !== undefined) ? after - before : undefined;
-                          const color = delta === undefined ? "text-muted-foreground" : delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-muted-foreground";
-                          return (
-                            <div key={p.id} className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] text-foreground truncate">{p.name}</span>
-                              {before !== undefined && (
-                                <span className={`text-[10px] font-mono shrink-0 ${color}`} data-testid={`text-rating-delta-${p.id}`}>
-                                  {after !== undefined
-                                    ? `${before}→${after} (${delta! > 0 ? "+" : ""}${delta})`
-                                    : `${before}`}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+
+            {/* Match list */}
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold px-1">Fixtures</p>
+              {entry.fixtures.map((f: TournamentFixture, idx: number) => {
+                const avgA = teamAvg(f.teamA);
+                const avgB = teamAvg(f.teamB);
+                const resultLabel = f.result === "A" ? "W / L" : f.result === "B" ? "L / W" : f.result === "draw" ? "D / D" : "–";
+                const winA = f.result === "A";
+                const winB = f.result === "B";
+                return (
+                  <div key={f.id} className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded border border-border/20" data-testid={`row-fixture-${idx}`}>
+                    <span className={`flex-1 truncate text-left ${winA ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                      {f.teamA.label}
+                      {showRatings && <span className="text-muted-foreground font-normal"> ({avgA})</span>}
+                    </span>
+                    <span className="font-mono text-muted-foreground shrink-0 text-center min-w-[32px]">{resultLabel}</span>
+                    <span className={`flex-1 truncate text-right ${winB ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                      {showRatings && <span className="text-muted-foreground font-normal">({avgB}) </span>}
+                      {f.teamB.label}
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </CardContent>
         </CollapsibleContent>
       </Collapsible>
