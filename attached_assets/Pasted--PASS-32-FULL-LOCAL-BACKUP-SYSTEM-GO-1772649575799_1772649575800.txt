@@ -1,0 +1,153 @@
+==============================
+PASS 32 – FULL LOCAL BACKUP SYSTEM
+==============================
+
+GOAL:
+• Export ALL app data stored in localStorage
+• Import backup file and fully restore state
+• Work offline
+• Not touch any rating logic, scheduling, results, stats, or generation systems
+
+---------------------------------------
+1️⃣ SETTINGS TAB – UI ADDITION
+---------------------------------------
+
+Inside Settings tab, add:
+
+--------------------------------
+DATA BACKUP
+--------------------------------
+
+<button id="exportBackupBtn">Export Backup</button>
+<button id="importBackupBtn">Import Backup</button>
+
+Add hidden file input below:
+
+<input
+  type="file"
+  id="backupFileInput"
+  accept="application/json"
+  style="display:none"
+/>
+
+---------------------------------------
+2️⃣ EXPORT FUNCTION
+---------------------------------------
+
+Add this globally (utilities / storage file):
+
+function exportAppBackup() {
+    try {
+        const backup = {};
+
+        // Capture ALL localStorage keys
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            backup[key] = localStorage.getItem(key);
+        }
+
+        const blob = new Blob(
+            [JSON.stringify(backup, null, 2)],
+            { type: "application/json" }
+        );
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+
+        a.href = url;
+        a.download = `uwh-app-backup-${new Date().toISOString().split("T")[0]}.json`;
+
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        URL.revokeObjectURL(url);
+
+        alert("Backup downloaded successfully.");
+
+    } catch (err) {
+        alert("Backup failed. Please try again.");
+        console.error(err);
+    }
+}
+
+Attach to button:
+
+document.getElementById("exportBackupBtn")
+    .addEventListener("click", exportAppBackup);
+
+---------------------------------------
+3️⃣ IMPORT FUNCTION
+---------------------------------------
+
+Add this globally:
+
+function importAppBackup(file) {
+    const reader = new FileReader();
+
+    reader.onload = function (event) {
+        try {
+            const data = JSON.parse(event.target.result);
+
+            if (!data || typeof data !== "object") {
+                alert("Invalid backup file.");
+                return;
+            }
+
+            const confirmOverwrite = confirm(
+                "This will overwrite ALL current data. Continue?"
+            );
+
+            if (!confirmOverwrite) return;
+
+            // Clear existing storage
+            localStorage.clear();
+
+            // Restore backup
+            Object.keys(data).forEach(key => {
+                localStorage.setItem(key, data[key]);
+            });
+
+            alert("Backup restored successfully. App will reload.");
+            window.location.reload();
+
+        } catch (err) {
+            alert("Invalid or corrupted backup file.");
+            console.error(err);
+        }
+    };
+
+    reader.readAsText(file);
+}
+
+Hook up import button + file input:
+
+document.getElementById("importBackupBtn")
+    .addEventListener("click", () => {
+        document.getElementById("backupFileInput").click();
+    });
+
+document.getElementById("backupFileInput")
+    .addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            importAppBackup(file);
+        }
+    });
+
+---------------------------------------
+4️⃣ SAFETY NOTES
+---------------------------------------
+
+• Does NOT alter rating math
+• Does NOT alter scheduling
+• Does NOT alter results logic
+• Does NOT alter stats
+• Copies entire localStorage snapshot
+• Works fully offline
+• Reloads app after restore
+• Safe with editable results system
+
+---------------------------------------
+END PASS 32
+---------------------------------------

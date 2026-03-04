@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useApp } from "@/context/AppContext";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,9 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  Crosshair
+  Crosshair,
+  Download,
+  Upload
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -47,9 +49,59 @@ export default function SettingsPage() {
   const altPosSetting = adminSettings.find(s => s.key === "alternate_position_bonus");
   const currentAltPosBonus = altPosSetting ? parseInt(altPosSetting.value as string) : 2;
 
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     setKFactorInput(currentKFactor.toString());
   }, [currentKFactor]);
+
+  function handleExportBackup() {
+    try {
+      const backup: Record<string, string> = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key) backup[key] = localStorage.getItem(key) ?? "";
+      }
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `uwh-backup-${new Date().toISOString().split("T")[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: "Backup downloaded", description: "Your data has been saved successfully." });
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Backup failed", description: "Please try again.", variant: "destructive" });
+    }
+  }
+
+  function handleImportBackup(file: File) {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        if (!data || typeof data !== "object") {
+          toast({ title: "Invalid backup file", variant: "destructive" });
+          return;
+        }
+        const confirmed = window.confirm("This will overwrite ALL current data. Are you sure you want to continue?");
+        if (!confirmed) return;
+        localStorage.clear();
+        Object.keys(data).forEach(key => {
+          localStorage.setItem(key, data[key]);
+        });
+        toast({ title: "Backup restored", description: "Reloading app..." });
+        setTimeout(() => window.location.reload(), 800);
+      } catch (err) {
+        console.error(err);
+        toast({ title: "Invalid or corrupted backup file", variant: "destructive" });
+      }
+    };
+    reader.readAsText(file);
+  }
 
   const handleSliderChange = (value: number[]) => {
     const clamped = Math.min(Math.max(value[0], 0), 100);
@@ -275,6 +327,54 @@ export default function SettingsPage() {
                 data-testid="switch-show-positions"
               />
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Data Backup */}
+        <Card className="border-border/50">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Download className="h-4 w-4 text-emerald-400" />
+              Data Backup
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2 h-11 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+              onClick={handleExportBackup}
+              data-testid="button-export-backup"
+            >
+              <Download className="h-4 w-4" />
+              Export Backup
+            </Button>
+            <p className="text-[10px] text-muted-foreground px-1">
+              Downloads all your players, matches, settings and history as a JSON file.
+            </p>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2 h-11 border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+              onClick={() => backupFileInputRef.current?.click()}
+              data-testid="button-import-backup"
+            >
+              <Upload className="h-4 w-4" />
+              Import Backup
+            </Button>
+            <p className="text-[10px] text-muted-foreground px-1">
+              Restores all data from a previously exported backup file. This will overwrite all current data.
+            </p>
+            <input
+              ref={backupFileInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              data-testid="input-backup-file"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImportBackup(file);
+                e.target.value = "";
+              }}
+            />
           </CardContent>
         </Card>
 
