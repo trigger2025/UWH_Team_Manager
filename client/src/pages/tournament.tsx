@@ -10,6 +10,7 @@ import { Trophy, Swords, CheckCircle2, ChevronLeft, RotateCcw, CalendarClock, Ch
 import { useLocation } from "wouter";
 import { TournamentFixture, TournamentTeam, Player, PlayerWithAssignedFormationRole } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
+import { exportElementAsImage } from "@/lib/export-image";
 
 function getStandings(teams: TournamentTeam[], fixtures: TournamentFixture[]) {
   const standings: Record<string, { team: TournamentTeam; played: number; wins: number; draws: number; losses: number; points: number }> = {};
@@ -295,13 +296,7 @@ export default function TournamentPage() {
   const teamsRef = useRef<HTMLDivElement>(null);
 
   async function exportTeams() {
-    if (!teamsRef.current) return;
-    const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(teamsRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
-    const link = document.createElement("a");
-    link.download = "tournament-teams.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    await exportElementAsImage(teamsRef.current, "tournament-teams.png");
   }
 
   // Standings expansion + player editing state
@@ -387,13 +382,7 @@ export default function TournamentPage() {
   }
 
   async function exportSchedule() {
-    if (!scheduleRef.current) return;
-    const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(scheduleRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
-    const link = document.createElement("a");
-    link.download = "tournament-schedule.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    await exportElementAsImage(scheduleRef.current, "tournament-schedule.png");
   }
 
   return (

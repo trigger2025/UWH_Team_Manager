@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player, TournamentTeam } from "@shared/schema";
 import { useLocation } from "wouter";
 import { PlayerFilterBar, FilterState, defaultFilterState, applyPlayerFilter } from "@/components/player-filter-bar";
+import { exportElementAsImage } from "@/lib/export-image";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
   standard: "Standard",
@@ -97,23 +98,11 @@ export default function GeneratePage() {
   const twoPoolsRef = useRef<HTMLDivElement>(null);
 
   async function exportTwoPoolTeams() {
-    if (!twoPoolsRef.current) return;
-    const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(twoPoolsRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
-    const link = document.createElement("a");
-    link.download = "pool-teams.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    await exportElementAsImage(twoPoolsRef.current, "pool-teams.png");
   }
 
   async function exportTeams() {
-    if (!teamsRef.current) return;
-    const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(teamsRef.current, { backgroundColor: "#0a0f1e", scale: 2 });
-    const link = document.createElement("a");
-    link.download = "generated-teams.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    await exportElementAsImage(teamsRef.current, "generated-teams.png");
   }
 
   // Filter to only show players (no "active" filter during generation per requirements)

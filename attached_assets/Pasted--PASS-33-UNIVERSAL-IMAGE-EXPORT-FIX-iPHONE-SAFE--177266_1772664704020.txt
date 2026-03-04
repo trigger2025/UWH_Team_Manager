@@ -1,0 +1,244 @@
+==============================
+PASS 33 – UNIVERSAL IMAGE EXPORT FIX (iPHONE SAFE)
+==============================
+
+GOAL:
+Fix ALL export buttons so they work on deployed iPhone version.
+Must support:
+• 1 Pool
+• 2 Pool
+• Preset Mode
+• Tournament Teams
+• Schedule
+• Rating / Position toggle (where applicable)
+
+This DOES NOT touch:
+• Scheduling logic
+• Rating logic
+• Results logic
+• Editable results
+• Tournaments
+
+---------------------------------------
+1️⃣ INSTALL html2canvas (IF NOT INSTALLED)
+---------------------------------------
+
+npm install html2canvas
+
+---------------------------------------
+2️⃣ CREATE UNIVERSAL EXPORT UTILITY
+---------------------------------------
+
+Create file:
+src/utils/exportImage.js
+
+---------------------------------------
+PASTE:
+---------------------------------------
+
+import html2canvas from "html2canvas";
+
+export async function exportElementAsImage(element, filename) {
+  if (!element) return;
+
+  const canvas = await html2canvas(element, {
+    backgroundColor: "#ffffff",
+    scale: 2,
+    useCORS: true
+  });
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(link.href);
+      resolve();
+    }, "image/png");
+  });
+}
+
+---------------------------------------
+3️⃣ ADD TEAM EXPORT HANDLER
+---------------------------------------
+
+In your generate page (or shared utilities):
+
+---------------------------------------
+PASTE:
+---------------------------------------
+
+import { exportElementAsImage } from "../utils/exportImage";
+
+async function handleTeamExport({
+  containerId,
+  includeRatings,
+  includePositions,
+  filename
+}) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  // Toggle ratings visibility
+  container
+    .querySelectorAll(".rating")
+    .forEach(el => el.style.display = includeRatings ? "inline" : "none");
+
+  // Toggle positions visibility
+  container
+    .querySelectorAll(".position")
+    .forEach(el => el.style.display = includePositions ? "inline" : "none");
+
+  await exportElementAsImage(container, filename);
+
+  // Restore original visibility
+  container
+    .querySelectorAll(".rating")
+    .forEach(el => el.style.display = "");
+
+  container
+    .querySelectorAll(".position")
+    .forEach(el => el.style.display = "");
+}
+
+---------------------------------------
+4️⃣ ENSURE EACH MODE HAS UNIQUE CONTAINER ID
+---------------------------------------
+
+1 POOL:
+<div id="generate-teams-container">
+
+2 POOL:
+<div id="generate-2pool-container">
+
+PRESET MODE:
+<div id="preset-generate-container">
+
+TOURNAMENT GENERATED TEAMS:
+<div id="tournament-teams-container">
+
+SCHEDULE VIEW:
+<div id="schedule-container">
+
+---------------------------------------
+5️⃣ ADD EXPORT BUTTON (TEAMS)
+---------------------------------------
+
+Example for 1 Pool:
+
+<button onClick={() => setExportTarget("generate-teams-container")}>
+  Save Teams as Image
+</button>
+
+Repeat same logic for:
+• 2 Pool
+• Preset Mode
+• Tournament Mode
+
+(IMPORTANT: Tournament mode previously missing — must now include)
+
+---------------------------------------
+6️⃣ EXPORT OPTIONS MODAL (WITH TOGGLES)
+---------------------------------------
+
+Create reusable component:
+
+---------------------------------------
+PASTE:
+---------------------------------------
+
+function ExportDialog({ containerId, onClose }) {
+  const [includeRatings, setIncludeRatings] = React.useState(true);
+  const [includePositions, setIncludePositions] = React.useState(true);
+
+  return (
+    <div className="export-modal">
+      <h3>Export Options</h3>
+
+      <label>
+        <input
+          type="checkbox"
+          checked={includeRatings}
+          onChange={() => setIncludeRatings(!includeRatings)}
+        />
+        Include Ratings
+      </label>
+
+      <label>
+        <input
+          type="checkbox"
+          checked={includePositions}
+          onChange={() => setIncludePositions(!includePositions)}
+        />
+        Include Positions
+      </label>
+
+      <button
+        onClick={async () => {
+          await handleTeamExport({
+            containerId,
+            includeRatings,
+            includePositions,
+            filename: "teams.png"
+          });
+          onClose();
+        }}
+      >
+        Save Image
+      </button>
+
+      <button onClick={onClose}>Cancel</button>
+    </div>
+  );
+}
+
+---------------------------------------
+7️⃣ SCHEDULE EXPORT BUTTON (NO TOGGLES)
+---------------------------------------
+
+<button
+  onClick={() =>
+    exportElementAsImage(
+      document.getElementById("schedule-container"),
+      "schedule.png"
+    )
+  }
+>
+  Save Schedule as Image
+</button>
+
+(No rating/position toggle required)
+
+---------------------------------------
+8️⃣ REQUIRED CSS CLASS CHECK
+---------------------------------------
+
+Ensure ratings and positions in team UI use:
+
+<span className="rating">...</span>
+<span className="position">...</span>
+
+Without these classes toggling will not work.
+
+---------------------------------------
+9️⃣ IMPORTANT iPHONE NOTES
+---------------------------------------
+
+• Must be deployed (HTTPS)
+• Must use toBlob (already implemented)
+• Must NOT use window.open
+• iPhone will show preview → user taps Share → Save Image
+
+This is expected iOS behaviour.
+Direct silent save to Photos is NOT possible from web apps.
+
+---------------------------------------
+END PASS 33
+---------------------------------------
