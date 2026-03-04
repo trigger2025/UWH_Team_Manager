@@ -1,0 +1,154 @@
+==============================
+PASS 23 – STRUCTURAL UPDATE
+==============================
+
+---------------------------------------
+1️⃣  TWO-POOL SCHEDULING FIX (4 & 6 TEAMS)
+---------------------------------------
+
+RULES:
+
+• 5 teams → DO NOT MODIFY (existing logic remains untouched)
+
+• 4 teams (each plays 3 matches)
+  - Total matches: 6
+  - Each round has:
+      Pool A: 1 match
+      Pool B: 1 match
+  - Distribution must be mirrored:
+      2 teams → 2A / 1B
+      2 teams → 1A / 2B
+  - No team may play same opponent twice
+  - No team may appear twice in same round
+
+• 6 teams (each plays 5 matches)
+  - Total matches: 15
+  - Each round:
+      Pool A: 1 match
+      Pool B: 1 match
+      2 teams sit out
+  - Each team must:
+      - Play 5 total matches
+      - Have either:
+            3A / 2B
+            or
+            2A / 3B
+      - Imbalance must be evenly distributed
+  - Avoid consecutive same-pool assignment if possible
+
+IMPLEMENTATION:
+
+After round-robin pair generation:
+- Assign pool for each fixture using balancing function:
+
+function assignPoolsBalanced(fixtures, teamCount):
+    track poolCountA per team
+    track poolCountB per team
+
+    for each fixture in order:
+        if teamCount is even (4 or 6):
+            assign to pool that:
+                - keeps each team closest to half distribution
+                - minimizes consecutive same-pool streak
+        else:
+            use existing logic
+
+Persist pool assignments.
+
+---------------------------------------
+2️⃣  TOURNAMENT PLAYER-LEVEL VIEW
+---------------------------------------
+
+DO NOT alter existing standings table layout.
+
+Add:
+
+• Each team name in standings table becomes clickable.
+• Clicking toggles expandable panel below that team row.
+• Expanded panel shows:
+
+    Player Name
+    Rating Before Tournament
+    Net Rating Change
+    Final Rating
+
+Data source:
+Use existing tournament match snapshots.
+
+Aggregate per player:
+    netChange = sum(match.ratingDelta for tournament matches)
+    initialRating = snapshot.ratingBefore of first tournament match
+    finalRating = initialRating + netChange
+
+UI behaviour:
+• Only one team expanded at a time.
+• Collapse if clicking again.
+• No layout shifting of entire table.
+
+---------------------------------------
+3️⃣  EDITABLE RESULTS SYSTEM
+---------------------------------------
+
+Applies to:
+• Normal results
+• Tournament matches (before finalisation only)
+
+CONDITION:
+Editing only allowed while:
+    result.status === "pending"
+
+After:
+    result.status === "finalised"
+→ editing disabled.
+
+Add buttons inside result panel:
+
+[ + Add Black ]
+[ + Add White ]
+
+When clicked:
+• Show searchable dropdown of player list.
+• Allow multiple selections.
+• On confirm:
+      - Add player to team
+      - Recalculate team average rating immediately
+      - Update expected win probability
+      - DO NOT apply rating changes yet
+
+Add remove option:
+• Each player in panel has small "✕" button
+• Removing also recalculates team rating
+
+CRITICAL:
+Do NOT modify player rating until:
+    result is finalised.
+
+---------------------------------------
+4️⃣  POOL ASSIGNMENT PERSISTENCE SAFETY
+---------------------------------------
+
+When reopening tournament:
+• Preserve stored pool count mode (1 or 2 pools)
+• Do NOT default back to 1 pool
+• If stored schedule exists:
+      load schedule as-is
+      do not regenerate
+
+---------------------------------------
+5️⃣  SAFETY CHECKS
+---------------------------------------
+
+Ensure:
+
+• No team appears twice in same round
+• No empty pool slots
+• Total matches per team correct
+• 5-team logic untouched
+• Rating toggle in settings still works globally
+• Average team rating display unchanged
+• No impact to generate modes
+• No impact to 1-pool scheduling
+
+---------------------------------------
+END PASS 23
+---------------------------------------
