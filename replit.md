@@ -52,6 +52,16 @@ Preferred communication style: Simple, everyday language.
 - **History**: Saves finalized tournaments to a separate `localStorage` key and integrates with the results page.
 - **Export**: Allows exporting tournament schedules and generated teams as PNG images.
 
+## Tournament Team Roster Editing
+- **Condition**: Only available when `tournament.finalised === false`
+- **Location**: Standings section on /tournament — each team row is clickable to expand/collapse
+- **One at a time**: Only one team expanded at a time; expanding a new row collapses the previous
+- **Player list**: Expanded panel shows all players with rating; each has a ✕ remove button
+- **Add Player**: "+ Add Player" button opens an inline searchable picker showing all master-list players not already assigned to any tournament team
+- **Live avg**: Team average rating in the standings header row updates reactively as players are added/removed
+- **Snapshot management**: `updateTournamentTeamRoster` in AppContext updates `playerSnapshots` — adds snapshots for newly added players (from current ratings), removes snapshots for removed players
+- **Rating safety**: No actual rating changes until `finaliseTournament()` is called
+
 ## Editable Pending Matches
 - **Functionality**: Allows editing player rosters within pending matches directly from the results page.
 - **Updates**: Live updates to team player counts and average ratings as players are added or removed.

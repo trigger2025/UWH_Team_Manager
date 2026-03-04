@@ -1,0 +1,106 @@
+==============================
+PASS 25 – TOURNAMENT EDITABLE TEAMS
+==============================
+
+GOAL:
+Allow adding/removing players in the Tournament tab
+before tournament is finalised,
+using the same logic as normal editable results.
+
+---------------------------------------
+1️⃣  EDITING CONDITION
+---------------------------------------
+
+Editing is allowed ONLY when:
+
+tournament.status === "active"
+
+If tournament.status === "completed":
+    - Hide edit controls
+    - Lock all team compositions
+
+---------------------------------------
+2️⃣  WHERE EDIT CONTROLS LIVE
+---------------------------------------
+
+Inside Tournament tab → Standings table.
+
+Each team row becomes expandable (as already implemented).
+
+Inside expanded team panel, add:
+
+[ + Add Player ]
+Each listed player gets:
+[ ✕ ] remove button
+
+---------------------------------------
+3️⃣  ADD PLAYER FLOW
+---------------------------------------
+
+When "+ Add Player" is clicked:
+
+• Open searchable dropdown
+• Show ALL players from master player list
+• Exclude players already assigned to another tournament team
+• Allow multiple selections
+• On confirm:
+      - Add player to this team
+      - Update team roster immediately
+      - Recalculate:
+            team average rating
+            expected win probabilities for ALL remaining matches
+      - DO NOT apply rating changes yet
+
+---------------------------------------
+4️⃣  REMOVE PLAYER FLOW
+---------------------------------------
+
+When [ ✕ ] clicked:
+
+• Remove player from team
+• Immediately:
+      - Recalculate team average
+      - Recalculate expected probabilities for remaining matches
+• If player already has recorded match deltas:
+      - Remove their snapshot entries
+      - Remove their rating deltas for this tournament
+      - Recalculate tournament aggregates
+
+---------------------------------------
+5️⃣  RATING SAFETY
+---------------------------------------
+
+Player ratings must NOT permanently change until:
+
+tournament.status === "completed"
+
+All rating changes remain stored as match deltas.
+
+If roster changes:
+    - Rebuild expected win model for pending matches
+    - Already completed matches remain unchanged
+    - But player must exist in snapshot for those matches
+
+---------------------------------------
+6️⃣  UI RULES
+---------------------------------------
+
+• Editing does NOT collapse standings.
+• Only one team expanded at a time.
+• Average rating display updates live.
+• Rating toggle still respected.
+
+---------------------------------------
+7️⃣  DO NOT MODIFY
+---------------------------------------
+
+• Scheduling
+• Pool logic
+• Normal results mode
+• Persistence
+• Team naming
+• Progress bar
+
+---------------------------------------
+END PASS 25
+---------------------------------------

@@ -6,10 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Trophy, Swords, CheckCircle2, ChevronLeft, RotateCcw, CalendarClock } from "lucide-react";
+import { Trophy, Swords, CheckCircle2, ChevronLeft, RotateCcw, CalendarClock, ChevronDown, ChevronUp, X, UserPlus, Search } from "lucide-react";
 import { useLocation } from "wouter";
-import { TournamentFixture, TournamentTeam } from "@shared/schema";
-import { motion } from "framer-motion";
+import { TournamentFixture, TournamentTeam, Player, PlayerWithAssignedFormationRole } from "@shared/schema";
+import { motion, AnimatePresence } from "framer-motion";
 
 function getStandings(teams: TournamentTeam[], fixtures: TournamentFixture[]) {
   const standings: Record<string, { team: TournamentTeam; played: number; wins: number; draws: number; losses: number; points: number }> = {};
@@ -281,7 +281,8 @@ const SCHEDULE_STORAGE_KEY = "activeTournamentSchedule";
 const OPTIONS_STORAGE_KEY = "tournamentScheduleOptions";
 
 export default function TournamentPage() {
-  const { generationWorkspace, setTournamentFixtureResult, finaliseTournament, resetTournament } = useApp();
+  const { generationWorkspace, setTournamentFixtureResult, finaliseTournament, resetTournament, updateTournamentTeamRoster, players: allPlayers, visibilitySettings } = useApp();
+  const { showRatings = true } = visibilitySettings || {};
   const [, navigate] = useLocation();
   const tournament = generationWorkspace.tournament;
 
@@ -291,6 +292,11 @@ export default function TournamentPage() {
   const [schedulePools, setSchedulePools] = useState<1 | 2>(1);
   const [generatedSchedule, setGeneratedSchedule] = useState<ScheduleSlot[] | null>(null);
   const scheduleRef = useRef<HTMLDivElement>(null);
+
+  // Standings expansion + player editing state
+  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
+  const [pickerTeamId, setPickerTeamId] = useState<string | null>(null);
+  const [playerSearch, setPlayerSearch] = useState("");
 
   // Load persisted schedule and options on mount
   useEffect(() => {
@@ -443,30 +449,160 @@ export default function TournamentPage() {
           ))}
         </div>
 
-        {/* Standings (always shown) */}
+        {/* Standings (always shown, expandable for player editing when not finalised) */}
         {standings.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">Standings</h2>
             <Card className="border-border/50">
               <CardContent className="px-0 py-0">
                 <div className="divide-y divide-border/30">
-                  {standings.map((row, i) => (
-                    <motion.div
-                      key={row.team.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="flex items-center gap-3 px-4 py-2.5"
-                      data-testid={`row-standing-${row.team.id}`}
-                    >
-                      <span className={`text-sm font-bold w-5 text-center ${i === 0 ? "text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span>
-                      <span className="flex-1 text-sm font-medium">{row.team.label}</span>
-                      <span className="text-xs text-muted-foreground">{row.wins}W {row.draws}D {row.losses}L</span>
-                      <Badge variant={i === 0 ? "default" : "secondary"} className="text-xs font-bold min-w-[32px] text-center">
-                        {row.points}
-                      </Badge>
-                    </motion.div>
-                  ))}
+                  {standings.map((row, i) => {
+                    const isExpanded = expandedTeamId === row.team.id;
+                    const teamPlayers = teams.find(t => t.id === row.team.id)?.players ?? row.team.players;
+                    const avgRating = teamPlayers.length
+                      ? Math.round(teamPlayers.reduce((s, p) => s + (p.ratingUsed ?? p.rating), 0) / teamPlayers.length)
+                      : 0;
+                    // Players already assigned to any tournament team (for picker exclusion)
+                    const assignedPlayerIds = new Set<number>(teams.flatMap(t => t.players.map(p => p.id)));
+                    const availablePlayers = allPlayers.filter(p => !assignedPlayerIds.has(p.id) || teamPlayers.some(tp => tp.id === p.id));
+                    const filteredPicker = availablePlayers
+                      .filter(p => !teamPlayers.some(tp => tp.id === p.id))
+                      .filter(p => p.name.toLowerCase().includes(playerSearch.toLowerCase()));
+
+                    function removeFromTeam(pid: number) {
+                      const updated = teamPlayers.filter(p => p.id !== pid);
+                      updateTournamentTeamRoster(row.team.id, updated);
+                    }
+
+                    function addToTeam(player: Player) {
+                      const newEntry: PlayerWithAssignedFormationRole = {
+                        ...player,
+                        assignedPosition: 'Forward',
+                        formationRole: 'filler',
+                        ratingUsed: player.rating,
+                        usedOffHand: false,
+                      };
+                      updateTournamentTeamRoster(row.team.id, [...teamPlayers, newEntry]);
+                      setPickerTeamId(null);
+                      setPlayerSearch("");
+                    }
+
+                    return (
+                      <motion.div
+                        key={row.team.id}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: i * 0.05 }}
+                        data-testid={`row-standing-${row.team.id}`}
+                      >
+                        {/* Header row — clickable to expand */}
+                        <button
+                          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors text-left"
+                          onClick={() => {
+                            setExpandedTeamId(isExpanded ? null : row.team.id);
+                            setPickerTeamId(null);
+                            setPlayerSearch("");
+                          }}
+                          data-testid={`button-expand-team-${row.team.id}`}
+                        >
+                          <span className={`text-sm font-bold w-5 text-center shrink-0 ${i === 0 ? "text-amber-400" : "text-muted-foreground"}`}>{i + 1}</span>
+                          <span className="flex-1 text-sm font-medium truncate">{row.team.label}</span>
+                          {showRatings && <span className="text-[10px] text-muted-foreground shrink-0">avg {avgRating}</span>}
+                          <span className="text-xs text-muted-foreground shrink-0">{row.wins}W {row.draws}D {row.losses}L</span>
+                          <Badge variant={i === 0 ? "default" : "secondary"} className="text-xs font-bold min-w-[32px] text-center shrink-0">
+                            {row.points}
+                          </Badge>
+                          {isExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                        </button>
+
+                        {/* Expanded player panel */}
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="px-4 pb-3 pt-1 bg-muted/10 border-t border-border/20 space-y-1">
+                                {teamPlayers.map((p) => (
+                                  <div key={p.id} className="flex items-center justify-between text-xs py-0.5">
+                                    <span className="font-medium truncate flex-1">{p.name}</span>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {showRatings && (
+                                        <span className="text-[10px] text-muted-foreground">{p.ratingUsed ?? p.rating}</span>
+                                      )}
+                                      {!finalised && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); removeFromTeam(p.id); }}
+                                          className="text-muted-foreground/40 hover:text-destructive transition-colors"
+                                          data-testid={`button-remove-player-${p.id}`}
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+
+                                {/* Add Player section — only when not finalised */}
+                                {!finalised && (
+                                  <div className="pt-1">
+                                    {pickerTeamId === row.team.id ? (
+                                      <div className="rounded-lg border border-border/50 bg-background overflow-hidden mt-1">
+                                        <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
+                                          <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                          <input
+                                            autoFocus
+                                            value={playerSearch}
+                                            onChange={e => setPlayerSearch(e.target.value)}
+                                            placeholder="Search players…"
+                                            className="flex-1 text-xs bg-transparent outline-none text-foreground placeholder:text-muted-foreground"
+                                            onClick={e => e.stopPropagation()}
+                                            data-testid="input-player-search"
+                                          />
+                                          <button onClick={(e) => { e.stopPropagation(); setPickerTeamId(null); setPlayerSearch(""); }} className="text-muted-foreground hover:text-foreground">
+                                            <X className="h-3.5 w-3.5" />
+                                          </button>
+                                        </div>
+                                        <div className="max-h-36 overflow-y-auto divide-y divide-border/20">
+                                          {filteredPicker.length === 0 ? (
+                                            <div className="px-3 py-3 text-[11px] text-muted-foreground text-center">No available players</div>
+                                          ) : (
+                                            filteredPicker.map(p => (
+                                              <button
+                                                key={p.id}
+                                                className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-muted/30 text-left"
+                                                onClick={(e) => { e.stopPropagation(); addToTeam(p); }}
+                                                data-testid={`option-player-${p.id}`}
+                                              >
+                                                <span>{p.name}</span>
+                                                {showRatings && <span className="text-muted-foreground text-[10px]">{p.rating}</span>}
+                                              </button>
+                                            ))
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors mt-1"
+                                        onClick={(e) => { e.stopPropagation(); setPickerTeamId(row.team.id); setPlayerSearch(""); }}
+                                        data-testid={`button-add-player-${row.team.id}`}
+                                      >
+                                        <UserPlus className="h-3 w-3" />
+                                        + Add Player
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>

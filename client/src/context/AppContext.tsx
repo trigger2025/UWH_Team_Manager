@@ -52,6 +52,7 @@ interface AppState extends AppData {
   finaliseTournament: () => void;
   resetTournament: () => void;
   deleteTournamentHistory: (id: number) => void;
+  updateTournamentTeamRoster: (teamId: string, newPlayers: PlayerWithAssignedFormationRole[]) => void;
   tournamentHistory: TournamentHistoryEntry[];
 }
 
@@ -971,6 +972,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, []);
 
+  const updateTournamentTeamRoster = useCallback((teamId: string, newPlayers: PlayerWithAssignedFormationRole[]) => {
+    setState(prev => {
+      const t = prev.generationWorkspace.tournament;
+      if (!t || t.finalised) return prev;
+
+      const updatedTeams = t.teams.map(team => {
+        if (team.id !== teamId) return team;
+        const totalRating = newPlayers.reduce((s, p) => s + (p.ratingUsed ?? p.rating), 0);
+        return { ...team, players: newPlayers, totalRating };
+      });
+
+      // Rebuild playerSnapshots: all unique players across all updated teams
+      const existingSnapshotIds = new Set(t.playerSnapshots.map((s: PlayerSnapshot) => s.playerId));
+      const allPlayerIds = new Set<number>();
+      updatedTeams.forEach(team => team.players.forEach(p => allPlayerIds.add(p.id)));
+
+      // Keep snapshots for players still in any team
+      let updatedSnapshots = t.playerSnapshots.filter((s: PlayerSnapshot) => allPlayerIds.has(s.playerId));
+
+      // Add snapshots for newly added players not yet in snapshots
+      allPlayerIds.forEach(pid => {
+        if (!existingSnapshotIds.has(pid)) {
+          const player = prev.players.find(pl => pl.id === pid);
+          if (player) {
+            updatedSnapshots = [...updatedSnapshots, {
+              playerId: player.id,
+              ratingBefore: player.rating,
+              weakHandRatingBefore: player.weakHandRating ?? undefined,
+            }];
+          }
+        }
+      });
+
+      return {
+        ...prev,
+        generationWorkspace: {
+          ...prev.generationWorkspace,
+          tournament: { ...t, teams: updatedTeams, playerSnapshots: updatedSnapshots },
+        }
+      };
+    });
+  }, []);
+
   const deleteTournamentHistory = useCallback((id: number) => {
     setState(prev => {
       const entry = (prev.tournamentHistory || []).find(e => e.id === id);
@@ -1032,6 +1076,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       finaliseTournament,
       resetTournament,
       deleteTournamentHistory,
+      updateTournamentTeamRoster,
       tournamentHistory: state.tournamentHistory || [],
     }}>
       {children}
