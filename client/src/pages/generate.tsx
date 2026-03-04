@@ -96,6 +96,7 @@ export default function GeneratePage() {
 
   const teamsRef = useRef<HTMLDivElement>(null);
   const twoPoolsRef = useRef<HTMLDivElement>(null);
+  const tournamentTeamsRef = useRef<HTMLDivElement>(null);
 
   async function exportTwoPoolTeams() {
     await exportElementAsImage(twoPoolsRef.current, "pool-teams.png");
@@ -1329,7 +1330,7 @@ export default function GeneratePage() {
               animate={{ opacity: 1, scale: 1 }}
               className="space-y-4"
             >
-              <div className="space-y-3">
+              <div ref={tournamentTeamsRef} className="space-y-3">
                 {tournamentTeams.map((team) => (
                   <Card key={team.label} className="border-border/50">
                     <CardHeader className="pb-2 pt-3 px-4">
@@ -1371,7 +1372,7 @@ export default function GeneratePage() {
                   <ChevronLeft className="h-4 w-4" />
                   Reselect Players
                 </Button>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Button 
                     variant="secondary"
                     className="h-10 rounded-xl gap-2 text-sm"
@@ -1381,13 +1382,22 @@ export default function GeneratePage() {
                     <RefreshCw className="h-4 w-4" />
                     Re-roll
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="h-10 rounded-xl gap-1 text-sm"
+                    onClick={() => exportElementAsImage(tournamentTeamsRef.current, "tournament-teams.png")}
+                    data-testid="button-export-tournament-teams"
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
+                  </Button>
                   <Button 
                     className="h-10 rounded-xl gap-2 text-sm bg-amber-600 hover:bg-amber-500"
                     onClick={handleConfirmTournament}
                     data-testid="button-confirm-tournament"
                   >
                     <Trophy className="h-4 w-4" />
-                    Start Tournament
+                    Start
                   </Button>
                 </div>
               </div>
@@ -1447,26 +1457,16 @@ export default function GeneratePage() {
 
               {/* Action Buttons */}
               <div className="flex flex-col gap-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <Button 
-                    variant="outline" 
-                    className="h-10 rounded-xl gap-2 text-sm"
-                    onClick={handleClearTeams}
-                    data-testid="button-reselect"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                    Reselect
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="h-10 rounded-xl gap-2 text-sm text-muted-foreground"
-                    onClick={exportTeams}
-                    data-testid="button-export-teams"
-                  >
-                    Export PNG
-                  </Button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
+                <Button 
+                  variant="outline" 
+                  className="w-full h-10 rounded-xl gap-2 text-sm"
+                  onClick={handleClearTeams}
+                  data-testid="button-reselect"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Reselect Players
+                </Button>
+                <div className="grid grid-cols-3 gap-2">
                   <Button 
                     variant="secondary"
                     className="h-10 rounded-xl gap-2 text-sm"
@@ -1475,6 +1475,15 @@ export default function GeneratePage() {
                   >
                     <RefreshCw className="h-4 w-4" />
                     Re-roll
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-10 rounded-xl gap-1 text-sm"
+                    onClick={exportTeams}
+                    data-testid="button-export-teams"
+                  >
+                    <Download className="h-4 w-4" />
+                    Export
                   </Button>
                   <Button 
                     className="h-10 rounded-xl gap-2 text-sm"

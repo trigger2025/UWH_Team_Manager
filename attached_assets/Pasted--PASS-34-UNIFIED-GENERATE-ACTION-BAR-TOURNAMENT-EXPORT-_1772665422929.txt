@@ -1,0 +1,193 @@
+==============================
+PASS 34 – UNIFIED GENERATE ACTION BAR + TOURNAMENT EXPORT FIX
+==============================
+
+GOAL:
+
+1. Add missing "Export" button to Tournament team generation.
+2. Make ALL generation modes use the SAME bottom action bar layout.
+3. Ensure layout matches:
+
+[ Reselect Players ]
+[ Re-roll ] [ Export ] [ Confirm ]
+
+4. Do NOT touch:
+   • Export logic
+   • Scheduling logic
+   • Rating logic
+   • Preset logic
+   • Tournament logic
+   • Results logic
+
+This is purely structural UI consistency.
+
+---------------------------------------
+1️⃣ CREATE SHARED GENERATE ACTION BAR
+---------------------------------------
+
+Create reusable component:
+
+src/components/GenerateActionBar.jsx
+
+---------------------------------------
+PASTE:
+---------------------------------------
+
+export default function GenerateActionBar({
+  onReselect,
+  onReroll,
+  onExport,
+  onConfirm,
+  showReroll = true
+}) {
+  return (
+    <div className="generate-action-bar">
+
+      <button
+        className="btn btn-secondary full-width"
+        onClick={onReselect}
+      >
+        ← Reselect Players
+      </button>
+
+      <div className="action-row">
+        {showReroll && (
+          <button
+            className="btn btn-secondary"
+            onClick={onReroll}
+          >
+            ↻ Re-roll
+          </button>
+        )}
+
+        <button
+          className="btn btn-secondary"
+          onClick={onExport}
+        >
+          ⬇ Export
+        </button>
+
+        <button
+          className="btn btn-primary"
+          onClick={onConfirm}
+        >
+          ✓ Confirm
+        </button>
+      </div>
+    </div>
+  );
+}
+
+---------------------------------------
+2️⃣ ADD STANDARDISED STYLING
+---------------------------------------
+
+Add to global CSS:
+
+.generate-action-bar {
+  margin-top: 20px;
+  padding-bottom: 30px;
+}
+
+.generate-action-bar .full-width {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.generate-action-bar .action-row {
+  display: flex;
+  gap: 10px;
+}
+
+.generate-action-bar .action-row .btn {
+  flex: 1;
+}
+
+---------------------------------------
+3️⃣ REPLACE EXISTING BUTTON BLOCKS
+---------------------------------------
+
+In:
+
+• 1 Pool Generate Mode
+• 2 Pool Generate Mode
+• Preset Mode
+• Tournament Team Generation View
+
+REMOVE any existing:
+
+- Reselect button
+- Reroll button
+- Export button
+- Confirm button
+
+Replace with:
+
+---------------------------------------
+PASTE:
+---------------------------------------
+
+import GenerateActionBar from "../components/GenerateActionBar";
+
+<GenerateActionBar
+  onReselect={handleReselect}
+  onReroll={handleReroll}
+  onExport={() =>
+    openExportDialog("CORRECT_CONTAINER_ID")
+  }
+  onConfirm={handleConfirm}
+/>
+
+---------------------------------------
+4️⃣ FIX TOURNAMENT MODE EXPORT
+---------------------------------------
+
+In Tournament team generation screen:
+
+Wrap generated teams in:
+
+<div id="tournament-teams-container">
+
+Then use:
+
+onExport={() =>
+  openExportDialog("tournament-teams-container")
+}
+
+This restores the missing button and connects it to the working export system.
+
+---------------------------------------
+5️⃣ VERIFY CONTAINER IDS
+---------------------------------------
+
+1 Pool:
+"generate-teams-container"
+
+2 Pool:
+"generate-2pool-container"
+
+Preset:
+"preset-generate-container"
+
+Tournament:
+"tournament-teams-container"
+
+Schedule:
+"schedule-container"
+
+---------------------------------------
+6️⃣ SAFETY CHECKS
+---------------------------------------
+
+Confirm:
+
+• All generate modes now have identical button layout.
+• Tournament mode now has export button.
+• Buttons appear directly under teams.
+• No duplication of buttons.
+• Export still uses existing modal.
+• Rating/position toggle still respected.
+
+---------------------------------------
+END PASS 34
+---------------------------------------
