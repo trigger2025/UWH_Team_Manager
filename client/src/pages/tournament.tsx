@@ -10,7 +10,7 @@ import { Trophy, Swords, CheckCircle2, ChevronLeft, RotateCcw, CalendarClock, Ch
 import { useLocation } from "wouter";
 import { TournamentFixture, TournamentTeam, Player, PlayerWithAssignedFormationRole } from "@shared/schema";
 import { motion, AnimatePresence } from "framer-motion";
-import { exportElementAsImage, ExportOptions } from "@/lib/export-image";
+import { exportTeamSections, exportElementAsImage, ExportOptions } from "@/lib/export-image";
 import { ExportModal } from "@/components/export-modal";
 
 function getStandings(teams: TournamentTeam[], fixtures: TournamentFixture[]) {
@@ -300,7 +300,20 @@ export default function TournamentPage() {
 
   async function handleExportTeamsConfirm(opts: ExportOptions) {
     setExportTeamsOpen(false);
-    await exportElementAsImage(teamsRef.current, "tournament-teams.png", opts);
+    const tournamentTeams = tournament?.teams ?? [];
+    if (tournamentTeams.length > 0) {
+      const exportTeams = tournamentTeams.map((t) => ({
+        name: t.label,
+        avg: t.players.length ? Math.round(t.totalRating / t.players.length) : 0,
+        color: t.label,
+        players: t.players.map((p) => ({
+          name: p.name,
+          position: p.assignedPosition,
+          rating: p.ratingUsed ?? p.rating,
+        })),
+      }));
+      await exportTeamSections([{ teams: exportTeams }], "tournament-teams.png", opts, "Tournament Teams");
+    }
   }
 
   async function handleExportScheduleConfirm(_opts: ExportOptions) {

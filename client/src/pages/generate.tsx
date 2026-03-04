@@ -31,7 +31,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { GeneratedTeam, FormationType, FormationPosition, GenerationMode, PlayerWithAssignedFormationRole, PlayerOffHandSelection, PoolAssignment, TwoPoolsGeneratedTeams, TeamTemplate, Player, TournamentTeam } from "@shared/schema";
 import { useLocation } from "wouter";
 import { PlayerFilterBar, FilterState, defaultFilterState, applyPlayerFilter } from "@/components/player-filter-bar";
-import { exportElementAsImage, ExportOptions } from "@/lib/export-image";
+import { exportTeamSections, ExportOptions } from "@/lib/export-image";
 import { ExportModal } from "@/components/export-modal";
 
 const MODE_LABELS: Record<GenerationMode, string> = {
@@ -106,14 +106,49 @@ export default function GeneratePage() {
     setExportModalOpen(true);
   }
 
+  function teamToExport(team: GeneratedTeam) {
+    const avg = team.players.length ? Math.round(team.totalRating / team.players.length) : 0;
+    return {
+      name: `Team ${team.color}`,
+      avg,
+      color: team.color,
+      players: team.players.map((p) => ({
+        name: p.name,
+        position: p.assignedPosition,
+        rating: p.ratingUsed,
+      })),
+    };
+  }
+
   async function handleExportConfirm(opts: ExportOptions) {
     setExportModalOpen(false);
-    if (exportTarget === "twopools") {
-      await exportElementAsImage(twoPoolsRef.current, "pool-teams.png", opts);
-    } else if (exportTarget === "tournament") {
-      await exportElementAsImage(tournamentTeamsRef.current, "tournament-teams.png", opts);
-    } else {
-      await exportElementAsImage(teamsRef.current, "generated-teams.png", opts);
+
+    if (exportTarget === "twopools" && twoPoolsTeams) {
+      const sections = [];
+      if (twoPoolsTeams.poolA) {
+        sections.push({ label: "Pool A", teams: [teamToExport(twoPoolsTeams.poolA.black), teamToExport(twoPoolsTeams.poolA.white)] });
+      }
+      if (twoPoolsTeams.poolB) {
+        sections.push({ label: "Pool B", teams: [teamToExport(twoPoolsTeams.poolB.black), teamToExport(twoPoolsTeams.poolB.white)] });
+      }
+      await exportTeamSections(sections, "pool-teams.png", opts, "Pool Teams");
+
+    } else if (exportTarget === "tournament" && tournamentTeams) {
+      const teams = tournamentTeams.map((t) => ({
+        name: t.label,
+        avg: t.players.length ? Math.round(t.totalRating / t.players.length) : 0,
+        color: t.label,
+        players: t.players.map((p) => ({
+          name: p.name,
+          position: p.assignedPosition,
+          rating: p.ratingUsed ?? p.rating,
+        })),
+      }));
+      await exportTeamSections([{ teams }], "tournament-teams.png", opts, "Tournament Teams");
+
+    } else if (generatedTeams) {
+      const sections = [{ teams: [teamToExport(generatedTeams.black), teamToExport(generatedTeams.white)] }];
+      await exportTeamSections(sections, "generated-teams.png", opts, "Generated Teams");
     }
   }
 

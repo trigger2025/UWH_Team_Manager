@@ -1,4 +1,7 @@
 import html2canvas from "html2canvas";
+import { createRoot } from "react-dom/client";
+import { createElement } from "react";
+import TeamsExportLayout, { ExportSectionData } from "@/components/export/TeamsExportLayout";
 
 const BG = "#0a0f1e";
 
@@ -8,13 +11,67 @@ export interface ExportOptions {
 }
 
 /**
- * Captures an element as PNG using a fixed-width (1000px) off-screen clone.
- *
- * Key behaviours:
- * - Hard-resets every flex/grid responsive constraint so mobile Safari can't
- *   compress the layout before capture.
- * - Never mutates the live DOM — only the off-screen clone is modified.
- * - Uses canvas.toBlob() (iOS Safari safe) instead of toDataURL.
+ * Renders a brand-new React tree off-screen at a fixed 1000px width,
+ * then captures it with html2canvas. This completely avoids viewport
+ * scaling and flex-shrink issues that plague DOM-clone approaches on
+ * mobile Safari.
+ */
+export async function exportTeamSections(
+  sections: ExportSectionData[],
+  filename: string,
+  options: ExportOptions = {},
+  title?: string
+): Promise<void> {
+  const { includeRatings = true, includePositions = true } = options;
+
+  const container = document.createElement("div");
+  container.style.position = "fixed";
+  container.style.top = "0";
+  container.style.left = "-99999px";
+  container.style.width = "1000px";
+  container.style.pointerEvents = "none";
+  document.body.appendChild(container);
+
+  const root = createRoot(container);
+  root.render(
+    createElement(TeamsExportLayout, { sections, includeRatings, includePositions, title })
+  );
+
+  // Give React one tick to flush the render
+  await new Promise<void>((resolve) => setTimeout(resolve, 150));
+
+  try {
+    const canvas = await html2canvas(container.firstElementChild as HTMLElement, {
+      backgroundColor: BG,
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error("toBlob returned null")); return; }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        resolve();
+      }, "image/png");
+    });
+  } finally {
+    root.unmount();
+    document.body.removeChild(container);
+  }
+}
+
+/**
+ * Fallback DOM-clone export — used for schedule (table layout) and
+ * any element without structured team data. Uses fixed-width clone
+ * with all flex constraints stripped.
  */
 export async function exportElementAsImage(
   element: HTMLElement | null,
@@ -27,7 +84,6 @@ export async function exportElementAsImage(
 
   const clone = element.cloneNode(true) as HTMLElement;
 
-  // Hard-reset the clone's own box model
   clone.style.width = "1000px";
   clone.style.minWidth = "1000px";
   clone.style.maxWidth = "1000px";
@@ -39,14 +95,12 @@ export async function exportElementAsImage(
   clone.style.boxSizing = "border-box";
   clone.style.background = BG;
 
-  // Strip all responsive constraints from every descendant
   clone.querySelectorAll<HTMLElement>("*").forEach((el) => {
     el.style.maxWidth = "none";
     el.style.minWidth = "0";
     el.style.flexShrink = "0";
   });
 
-  // Apply rating/position visibility toggles to the clone
   if (!includeRatings) {
     clone.querySelectorAll<HTMLElement>(".player-rating").forEach((el) => {
       el.style.display = "none";
@@ -58,7 +112,6 @@ export async function exportElementAsImage(
     });
   }
 
-  // Mount the clone in a fixed offscreen wrapper so it renders at full width
   const wrapper = document.createElement("div");
   wrapper.style.position = "fixed";
   wrapper.style.top = "0";
