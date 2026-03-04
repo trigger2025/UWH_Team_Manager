@@ -1,0 +1,147 @@
+==============================
+PASS 27 – LEAN PRESET MODE
+==============================
+
+GOAL:
+Allow creation of one preset team,
+generate strongest balanced opposition,
+and generate remaining teams normally.
+
+Do NOT modify:
+• Existing generation engine
+• Rating logic
+• Scheduling
+• Tournament system
+• Manual movement logic
+
+Preset mode is an ADDITION.
+
+---------------------------------------
+1️⃣  ADD GENERATE MODE OPTION
+---------------------------------------
+
+Add new mode selector option:
+
+Mode:
+- Normal
+- Preset
+
+Default remains Normal.
+
+---------------------------------------
+2️⃣  PRESET FLOW
+---------------------------------------
+
+STEP ORDER:
+
+1. Select Mode = Preset
+2. Select 1 Pool or 2 Pools
+3. IF 2 Pools:
+      Show Pool Selector:
+      - Pool A
+      - Pool B
+      (Preset team + opposition will go here)
+
+4. Select attending players (as normal)
+
+5. New Section:
+   "Select Preset Team Players"
+
+   - Searchable multi-select
+   - Only from attending players
+   - Must select at least 1
+   - Soft warning if less than 4
+   - Hard cap at 12
+
+---------------------------------------
+3️⃣  GENERATION LOGIC
+---------------------------------------
+
+After clicking Generate:
+
+A) PRESET TEAM
+   TeamPreset = selected preset players
+
+B) OPPOSITION TEAM
+   From remaining attending players:
+       - Select players to match preset team size
+       - Use standard balancing logic:
+            • Respect positions
+            • Respect ratings
+       - Goal:
+            Make closest average rating to preset team
+       - Hard rule:
+            Same number of players as preset team
+            (unless insufficient players)
+
+C) REMAINING PLAYERS
+
+If 2 Pools:
+    - Send Preset + Opposition to selected pool
+    - Remaining players:
+          Generate 2 balanced teams
+          Send to other pool
+
+If 1 Pool:
+    - Only Preset vs Opposition generated
+    - Remaining players ignored
+      (show warning if unused players)
+
+---------------------------------------
+4️⃣  BALANCING RULES FOR OPPOSITION
+---------------------------------------
+
+Use same algorithm as normal team generation,
+but lock preset team first.
+
+Pseudo:
+
+remaining = attending - preset
+
+sort remaining by rating descending
+
+build opposition:
+    targetSize = preset.length
+    pick players iteratively minimizing:
+        abs(oppositionAvg - presetAvg)
+
+---------------------------------------
+5️⃣  MANUAL MOVEMENT
+---------------------------------------
+
+After generation:
+• All manual moves allowed
+• Pool swapping allowed
+• Position recalculation allowed
+• No restrictions
+
+---------------------------------------
+6️⃣  UI PANEL LABELS
+---------------------------------------
+
+Preset team should show:
+
+Badge:
+  "Preset"
+
+Opposition:
+  "Opposition"
+
+Other generated teams:
+  normal numbering or captain naming
+
+---------------------------------------
+7️⃣  SAFETY CHECKS
+---------------------------------------
+
+Ensure:
+• No duplicate players
+• No player appears in two teams
+• Team sizes equal where possible
+• Works with 4–12 players
+• Works with odd numbers
+• Does NOT affect other generate modes
+
+---------------------------------------
+END PASS 27
+---------------------------------------

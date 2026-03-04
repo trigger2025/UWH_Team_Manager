@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useApp } from "@/context/AppContext";
-import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, FORMATION_ROLES, createMatchTeamSnapshot, generateMultipleTeams } from "@/lib/team-logic";
+import { generateTeams, cloneTeams, movePlayerBetweenTeams, assignFormationRoles, FORMATION_ROLES, createMatchTeamSnapshot, generateMultipleTeams, getEffectiveRating } from "@/lib/team-logic";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +63,12 @@ export default function GeneratePage() {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showGenerated, setShowGenerated] = useState(false);
   const [tournamentTeams, setTournamentTeams] = useState<TournamentTeam[] | null>(null);
+
+  // Preset mode state
+  const [presetPlayerIds, setPresetPlayerIds] = useState<number[]>([]);
+  const [presetTwoPool, setPresetTwoPool] = useState(false);
+  const [presetPoolTarget, setPresetPoolTarget] = useState<"A" | "B">("A");
+  const [presetLeftoverCount, setPresetLeftoverCount] = useState(0);
 
   const { 
     mode, 
@@ -193,6 +199,77 @@ export default function GeneratePage() {
     setShowGenerated(true);
   };
 
+  const togglePresetPlayer = (id: number) => {
+    setPresetPlayerIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : prev.length < 12 ? [...prev, id] : prev
+    );
+  };
+
+  const handleGeneratePreset = () => {
+    const selectedPlayers = players.filter(p => selectedPlayerIds.includes(p.id));
+    const presetPlayers = selectedPlayers.filter(p => presetPlayerIds.includes(p.id));
+    if (presetPlayers.length === 0) return;
+
+    const remainingPlayers = selectedPlayers.filter(p => !presetPlayerIds.includes(p.id));
+    const targetSize = Math.min(presetPlayers.length, remainingPlayers.length);
+
+    // Build opposition greedily: pick players that minimise |opp avg – preset avg|
+    const presetAvg = presetPlayers.reduce((s, p) => s + getEffectiveRating(p, playerOffHandSelections).rating, 0) / presetPlayers.length;
+    const pool = [...remainingPlayers];
+    const oppositionPlayers: Player[] = [];
+
+    for (let i = 0; i < targetSize; i++) {
+      let bestIdx = 0;
+      let bestDiff = Infinity;
+      for (let j = 0; j < pool.length; j++) {
+        const temp = [...oppositionPlayers, pool[j]];
+        const avg = temp.reduce((s, p) => s + getEffectiveRating(p, playerOffHandSelections).rating, 0) / temp.length;
+        const diff = Math.abs(avg - presetAvg);
+        if (diff < bestDiff) { bestDiff = diff; bestIdx = j; }
+      }
+      oppositionPlayers.push(pool[bestIdx]);
+      pool.splice(bestIdx, 1);
+    }
+
+    const presetAssigned = assignFormationRoles(presetPlayers, teamFormations.black, playerOffHandSelections, adminSettings);
+    const oppAssigned    = assignFormationRoles(oppositionPlayers, teamFormations.white, playerOffHandSelections, adminSettings);
+
+    const presetTeam: GeneratedTeam = {
+      color: "Black",
+      formation: teamFormations.black,
+      players: presetAssigned,
+      totalRating: presetAssigned.reduce((s, p) => s + p.ratingUsed, 0),
+    };
+    const oppTeam: GeneratedTeam = {
+      color: "White",
+      formation: teamFormations.white,
+      players: oppAssigned,
+      totalRating: oppAssigned.reduce((s, p) => s + p.ratingUsed, 0),
+    };
+
+    const usedIds = new Set([...presetPlayers.map(p => p.id), ...oppositionPlayers.map(p => p.id)]);
+    const leftoverPlayers = selectedPlayers.filter(p => !usedIds.has(p.id));
+    setPresetLeftoverCount(leftoverPlayers.length);
+
+    if (!presetTwoPool) {
+      updateWorkspace({ generatedTeams: { black: presetTeam, white: oppTeam } });
+      setShowGenerated(true);
+    } else {
+      let otherPoolTeams: { black: GeneratedTeam; white: GeneratedTeam } | null = null;
+      const otherFormations = presetPoolTarget === "A" ? poolBFormations : poolAFormations;
+      if (leftoverPlayers.length >= 2) {
+        otherPoolTeams = generateTeams(leftoverPlayers, otherFormations, { playerOffHandSelections, adminSettings });
+      }
+      const presetPair = { black: presetTeam, white: oppTeam };
+      updateWorkspace({
+        twoPoolsTeams: presetPoolTarget === "A"
+          ? { poolA: presetPair, poolB: otherPoolTeams }
+          : { poolA: otherPoolTeams, poolB: presetPair },
+      });
+      setShowGenerated(true);
+    }
+  };
+
   const handleConfirmTournament = () => {
     if (!tournamentTeams) return;
     confirmTournament(tournamentTeams);
@@ -202,6 +279,10 @@ export default function GeneratePage() {
   const handleGenerate = () => {
     if (mode === "tournament") {
       handleGenerateTournament();
+      return;
+    }
+    if (mode === "preset_teams") {
+      handleGeneratePreset();
       return;
     }
     if (mode === "two_pools") {
@@ -394,11 +475,17 @@ export default function GeneratePage() {
     && selectedPlayerIds.length > 0
     && (poolAPlayers.length >= 2 || poolBPlayers.length >= 2);
   const canGenerateTournament = mode === "tournament" && selectedPlayerIds.length >= tournamentTeamCount;
+  const canGeneratePreset = mode === "preset_teams"
+    && presetPlayerIds.length >= 1
+    && presetPlayerIds.every(id => selectedPlayerIds.includes(id));
   
-  const canGenerate = mode === "two_pools" ? canGenerateTwoPools : mode === "tournament" ? canGenerateTournament : canGenerateStandard;
+  const canGenerate = mode === "two_pools" ? canGenerateTwoPools
+    : mode === "tournament" ? canGenerateTournament
+    : mode === "preset_teams" ? canGeneratePreset
+    : canGenerateStandard;
   
   const hasGeneratedTeams = showGenerated && (
-    mode === "two_pools" ? (twoPoolsTeams?.poolA || twoPoolsTeams?.poolB) :
+    (mode === "two_pools" || (mode === "preset_teams" && presetTwoPool)) ? (twoPoolsTeams?.poolA || twoPoolsTeams?.poolB) :
     mode === "tournament" ? (tournamentTeams && tournamentTeams.length > 0) :
     generatedTeams
   );
@@ -435,7 +522,6 @@ export default function GeneratePage() {
                     twoPoolsTeams: null,
                     poolAssignments: {} 
                   })}
-                  disabled={m === "preset_teams"}
                   className="text-xs"
                   data-testid={`button-mode-${m}`}
                 >
@@ -634,14 +720,73 @@ export default function GeneratePage() {
               </div>
             </CardContent>
           </Card>
-        ) : (
-          /* Standard Mode: Per-Team Formations */
-          <Card className="border-border/50">
-            <CardHeader className="pb-2 pt-3 px-4">
-              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Team Formations
-              </CardTitle>
-            </CardHeader>
+        ) : mode === "preset_teams" ? (
+          /* Preset Mode: Config + Formations */
+          <div className="space-y-3">
+            <Card className="border-border/50">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <UserCheck className="h-3 w-3" />
+                  Preset Configuration
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3 space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Pool Setup</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={!presetTwoPool ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs flex-1"
+                      onClick={() => { setPresetTwoPool(false); updateWorkspace({ generatedTeams: null, twoPoolsTeams: null }); setShowGenerated(false); }}
+                      data-testid="button-preset-1pool"
+                    >
+                      1 Pool
+                    </Button>
+                    <Button
+                      variant={presetTwoPool ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs flex-1"
+                      onClick={() => { setPresetTwoPool(true); updateWorkspace({ generatedTeams: null, twoPoolsTeams: null }); setShowGenerated(false); }}
+                      data-testid="button-preset-2pool"
+                    >
+                      2 Pools
+                    </Button>
+                  </div>
+                </div>
+                {presetTwoPool && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Preset match pool</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={presetPoolTarget === "A" ? "default" : "outline"}
+                        size="sm"
+                        className={`text-xs flex-1 ${presetPoolTarget === "A" ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}`}
+                        onClick={() => setPresetPoolTarget("A")}
+                        data-testid="button-preset-pool-a"
+                      >
+                        Pool A
+                      </Button>
+                      <Button
+                        variant={presetPoolTarget === "B" ? "default" : "outline"}
+                        size="sm"
+                        className={`text-xs flex-1 ${presetPoolTarget === "B" ? "bg-violet-500 hover:bg-violet-600 text-white" : ""}`}
+                        onClick={() => setPresetPoolTarget("B")}
+                        data-testid="button-preset-pool-b"
+                      >
+                        Pool B
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="border-border/50">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Team Formations
+                </CardTitle>
+              </CardHeader>
             <CardContent className="px-4 pb-3 space-y-3">
               {/* Black Team Formation */}
               <div className="space-y-1">
@@ -669,6 +814,65 @@ export default function GeneratePage() {
               </div>
               
               {/* White Team Formation */}
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-cyan-400" />
+                  <span className="text-xs font-medium">White Team</span>
+                </div>
+                <div className="flex gap-2">
+                  {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                    <Button
+                      key={f}
+                      variant={teamFormations.white === f ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTeamFormation("white", f)}
+                      className="text-xs flex-1"
+                      data-testid={`button-formation-white-${f}`}
+                    >
+                      {FORMATION_LABELS[f]}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-[9px] text-muted-foreground">
+                  Positions: {getUniquePositions(teamFormations.white).join(", ")}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          {/* close preset wrapper */}
+          </div>
+        ) : (
+          /* Standard Mode: Per-Team Formations */
+          <Card className="border-border/50">
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Team Formations
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-primary" />
+                  <span className="text-xs font-medium">Black Team</span>
+                </div>
+                <div className="flex gap-2">
+                  {(["3-3", "1-3-2"] as FormationType[]).map(f => (
+                    <Button
+                      key={f}
+                      variant={teamFormations.black === f ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTeamFormation("black", f)}
+                      className="text-xs flex-1"
+                      data-testid={`button-formation-black-${f}`}
+                    >
+                      {FORMATION_LABELS[f]}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-[9px] text-muted-foreground">
+                  Positions: {getUniquePositions(teamFormations.black).join(", ")}
+                </p>
+              </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-2 rounded-full bg-cyan-400" />
@@ -875,6 +1079,56 @@ export default function GeneratePage() {
                 </Card>
               )}
 
+              {/* Preset Player Selector */}
+              {mode === "preset_teams" && selectedPlayerIds.length > 0 && (
+                <Card className="border-border/50 border-purple-500/30">
+                  <CardHeader className="pb-2 pt-3 px-4">
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                        <UserCheck className="h-3 w-3 text-purple-400" />
+                        Select Preset Team Players ({presetPlayerIds.length}/12)
+                      </CardTitle>
+                      {presetPlayerIds.length > 0 && presetPlayerIds.length < 4 && (
+                        <span className="text-[10px] text-amber-400">Recommend 4+</span>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-3 max-h-[30vh] overflow-y-auto">
+                    <div className="space-y-1">
+                      {players.filter(p => selectedPlayerIds.includes(p.id)).map(player => {
+                        const isPreset = presetPlayerIds.includes(player.id);
+                        return (
+                          <div
+                            key={player.id}
+                            className={`flex items-center justify-between p-2.5 rounded-lg border transition-all cursor-pointer ${
+                              isPreset ? "bg-purple-500/10 border-purple-500/30" : "bg-background/50 border-transparent hover:border-border/50"
+                            }`}
+                            onClick={() => togglePresetPlayer(player.id)}
+                            data-testid={`preset-player-${player.id}`}
+                          >
+                            <div className="flex items-center gap-2 flex-1">
+                              {showRatings && (
+                                <div className={`h-7 w-7 rounded-md flex items-center justify-center font-bold text-[10px] ${
+                                  isPreset ? "bg-purple-500 text-white" : "bg-muted text-muted-foreground"
+                                }`}>
+                                  {player.rating}
+                                </div>
+                              )}
+                              <span className="text-sm font-medium">{player.name}</span>
+                            </div>
+                            <Checkbox
+                              checked={isPreset}
+                              data-testid={`checkbox-preset-player-${player.id}`}
+                              className="pointer-events-none"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Load Previous Teams + Generate Button */}
               {(teamTemplates || []).length > 0 && (
                 <Button
@@ -894,12 +1148,14 @@ export default function GeneratePage() {
                 data-testid="button-generate"
               >
                 {mode === "tournament" ? <Trophy className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
-                {mode === "tournament" 
-                  ? `Generate Tournament Teams (${selectedPlayerIds.length}/${tournamentTeamCount} players min)` 
+                {mode === "tournament"
+                  ? `Generate Tournament Teams (${selectedPlayerIds.length}/${tournamentTeamCount} players min)`
+                  : mode === "preset_teams"
+                  ? `Generate (Preset: ${presetPlayerIds.length} players)`
                   : `Generate Teams (${selectedPlayerIds.length} players)`}
               </Button>
             </motion.div>
-          ) : mode === "two_pools" && twoPoolsTeams ? (
+          ) : (mode === "two_pools" || (mode === "preset_teams" && presetTwoPool)) && twoPoolsTeams ? (
             <motion.div
               key="results-two-pools"
               initial={{ opacity: 0, scale: 0.95 }}
@@ -913,6 +1169,9 @@ export default function GeneratePage() {
                     <Badge className="bg-amber-500/20 text-amber-500 border-amber-500/30 font-bold">
                       Pool A
                     </Badge>
+                    {mode === "preset_teams" && presetPoolTarget === "A" && (
+                      <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[9px]">Preset Match</Badge>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 gap-3">
                     <TeamCard
@@ -949,6 +1208,9 @@ export default function GeneratePage() {
                     <Badge className="bg-violet-500/20 text-violet-500 border-violet-500/30 font-bold">
                       Pool B
                     </Badge>
+                    {mode === "preset_teams" && presetPoolTarget === "B" && (
+                      <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-[9px]">Preset Match</Badge>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 gap-3">
                     <TeamCard
@@ -1089,7 +1351,12 @@ export default function GeneratePage() {
             >
               {/* Team Cards */}
               <div ref={teamsRef} className="grid grid-cols-1 gap-3">
-                {/* Black Team */}
+                {/* Black Team (Preset in preset mode) */}
+                {mode === "preset_teams" && (
+                  <div className="flex items-center gap-2 px-1">
+                    <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 font-bold">Preset</Badge>
+                  </div>
+                )}
                 <TeamCard
                   team={generatedTeams.black}
                   colorClass="primary"
@@ -1104,7 +1371,12 @@ export default function GeneratePage() {
                   </div>
                 </div>
 
-                {/* White Team */}
+                {/* White Team (Opposition in preset mode) */}
+                {mode === "preset_teams" && (
+                  <div className="flex items-center gap-2 px-1">
+                    <Badge className="bg-cyan-500/20 text-cyan-300 border-cyan-500/30 font-bold">Opposition</Badge>
+                  </div>
+                )}
                 <TeamCard
                   team={generatedTeams.white}
                   colorClass="cyan-400"
@@ -1112,6 +1384,15 @@ export default function GeneratePage() {
                   showRatings={showRatings}
                   showPositions={showPositions}
                 />
+
+                {/* Leftover warning for preset 1-pool mode */}
+                {mode === "preset_teams" && presetLeftoverCount > 0 && (
+                  <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <span className="text-[10px] text-amber-300">
+                      {presetLeftoverCount} player{presetLeftoverCount !== 1 ? "s" : ""} not included (1-pool mode only generates Preset vs Opposition)
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}

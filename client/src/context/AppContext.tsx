@@ -566,7 +566,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         playerOffHandSelections: { ...ws.playerOffHandSelections },
       };
 
-      if (ws.mode === "two_pools" && twoPoolsTeams) {
+      if ((ws.mode === "two_pools" || (ws.mode === "preset_teams" && twoPoolsTeams)) && twoPoolsTeams) {
         if (twoPoolsTeams.poolA) {
           template.pools.A = {
             black: toTemplateStructure(twoPoolsTeams.poolA.black),

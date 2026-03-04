@@ -74,6 +74,17 @@ Preferred communication style: Simple, everyday language.
 ## Visibility Settings
 - **Configuration**: Allows users to toggle visibility of ratings and positions across various app views (e.g., player selection, team cards, match details).
 
+## Preset Mode
+- **Mode**: New "Preset Teams" generation mode (4th mode button, was previously disabled)
+- **Pool Setup**: Configurable 1-pool or 2-pool operation within the mode
+- **Preset Team Selection**: A searchable multi-select picker (from attending players only) picks preset team players; min 1, hard cap 12, soft warning if fewer than 4
+- **Opposition Generation**: Greedy algorithm picks players from remaining attendees that minimise |opp avg – preset avg|; opposition size matches preset team size
+- **1 Pool**: Generates Preset vs Opposition only; unused attendees are ignored (leftover count warning shown)
+- **2 Pools**: Preset + Opposition go to selected pool (A or B); remaining attendees generate 2 balanced teams for the other pool
+- **Labels**: "Preset" badge (purple) on the preset team, "Opposition" badge on the generated opposition; "Preset Match" badge on the relevant pool header in 2-pool view
+- **After Generation**: All manual moves, re-roll, pool swapping, and confirm flow work identically to standard/two-pools mode
+- **AppContext fix**: `saveTeamTemplate` and results.tsx display both check for `preset_teams` mode when `twoPoolsTeams` is populated, routing through the two-pool path
+
 ## Key Design Patterns
 - **Mobile-First**: Optimized for touch interfaces with a bottom navigation bar.
 - **Offline-First**: Core functionality operates without network dependency.

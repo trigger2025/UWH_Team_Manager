@@ -187,7 +187,7 @@ export default function ResultsPage() {
               Pending Matches - Enter Scores
             </h3>
             
-            {mode === "two_pools" && twoPoolsTeams ? (
+            {(mode === "two_pools" || mode === "preset_teams") && twoPoolsTeams ? (
               <>
                 {/* Pool A Pending */}
                 {twoPoolsTeams.poolA && (
