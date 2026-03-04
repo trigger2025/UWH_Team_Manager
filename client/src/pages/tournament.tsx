@@ -77,7 +77,70 @@ type ScheduleRow = {
   bye: TournamentTeam[];
 };
 
-// 6-team two-pool: flatten all 15 matches and pair greedily into ~8 time slots
+// ─── 5-team two-pool ──────────────────────────────────────────────────────────
+// Hard-isolated. NEVER called for any other team count.
+// Rules: 5 rounds × 2 real pairs → each team plays 4 matches (2 Pool A, 2 Pool B) + 1 bye.
+// Score-based assignment guarantees BOTH pairs are always scheduled (fixes the
+// old canGoA/canGoB guard that could silently drop one pair per round).
+function generate5TeamTwoPoolSchedule(teams: TournamentTeam[]): ScheduleRow[] {
+  const rounds = generateRoundRobin(teams); // 5 rounds, each has exactly 2 real pairs
+  const tracker: Record<string, { poolA: number; poolB: number }> = {};
+  teams.forEach(t => { tracker[t.id] = { poolA: 0, poolB: 0 }; });
+
+  return rounds.map((pairings, roundIndex) => {
+    const used = new Set<string>();
+
+    if (pairings.length < 2) {
+      // Safety net — should never fire for 5 teams
+      const match = pairings[0] ?? null;
+      if (match) match.forEach(t => { used.add(t.id); });
+      return { round: roundIndex, poolA: match, poolB: null, bye: teams.filter(t => !used.has(t.id)) };
+    }
+
+    const [m0, m1] = pairings;
+    // Positive score → team has played more B games → wants Pool A next
+    const s0 = m0.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
+    const s1 = m1.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
+    // Higher-scoring match (more A-hungry) goes to Pool A; the other to Pool B.
+    // Both matches are ALWAYS assigned — no skipping.
+    const aMatch = s0 >= s1 ? m0 : m1;
+    const bMatch = s0 >= s1 ? m1 : m0;
+
+    aMatch.forEach(t => { tracker[t.id].poolA++; used.add(t.id); });
+    bMatch.forEach(t => { tracker[t.id].poolB++; used.add(t.id); });
+
+    return { round: roundIndex, poolA: aMatch, poolB: bMatch, bye: teams.filter(t => !used.has(t.id)) };
+  });
+}
+
+// ─── 4-team two-pool ──────────────────────────────────────────────────────────
+// Hard-isolated. NEVER called for any other team count.
+// Each round has 2 matches; score-based pool assignment avoids Pool A bias.
+function generate4TeamTwoPoolSchedule(teams: TournamentTeam[]): ScheduleRow[] {
+  const rounds = generateRoundRobin(teams);
+  const tracker: Record<string, { poolA: number; poolB: number }> = {};
+  teams.forEach(t => { tracker[t.id] = { poolA: 0, poolB: 0 }; });
+
+  return rounds.map((pairings, roundIndex) => {
+    const used = new Set<string>();
+    if (pairings.length < 2) {
+      const match = pairings[0] ?? null;
+      if (match) match.forEach(t => { used.add(t.id); });
+      return { round: roundIndex, poolA: match, poolB: null, bye: teams.filter(t => !used.has(t.id)) };
+    }
+    const [m0, m1] = pairings;
+    const s0 = m0.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
+    const s1 = m1.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
+    const poolA = s0 >= s1 ? m0 : m1;
+    const poolB = s0 >= s1 ? m1 : m0;
+    poolA.forEach(t => { tracker[t.id].poolA++; used.add(t.id); });
+    poolB.forEach(t => { tracker[t.id].poolB++; used.add(t.id); });
+    return { round: roundIndex, poolA, poolB, bye: teams.filter(t => !used.has(t.id)) };
+  });
+}
+
+// ─── 6-team two-pool ──────────────────────────────────────────────────────────
+// Hard-isolated. Flattens all 15 matches and pairs greedily into ~8 time slots.
 function generate6TeamTwoPoolSchedule(teams: TournamentTeam[]): ScheduleRow[] {
   const rounds = generateRoundRobin(teams);
   const tracker: Record<string, { poolA: number; poolB: number }> = {};
@@ -154,71 +217,30 @@ function generate6TeamTwoPoolSchedule(teams: TournamentTeam[]): ScheduleRow[] {
   return rows;
 }
 
+// ─── Main dispatcher ──────────────────────────────────────────────────────────
+// Routes to the correct isolated algorithm based on team count and pool mode.
+// Adding future team counts must go here — never inside the per-count functions.
 function generateBalancedSchedule(teams: TournamentTeam[], useTwoPools: boolean): ScheduleRow[] {
+  // 3 teams always single-pool (not enough for two concurrent games)
   if (teams.length === 3) useTwoPools = false;
 
-  // 6 teams in 2-pool: dedicated algorithm that schedules all 15 matches
-  if (teams.length === 6 && useTwoPools) {
-    return generate6TeamTwoPoolSchedule(teams);
+  if (useTwoPools) {
+    if (teams.length === 5) return generate5TeamTwoPoolSchedule(teams);
+    if (teams.length === 4) return generate4TeamTwoPoolSchedule(teams);
+    if (teams.length === 6) return generate6TeamTwoPoolSchedule(teams);
   }
 
+  // Single-pool fallback for all team counts (including 2, 3, and any 2-pool
+  // path not covered above — e.g. teams.length === 2 with useTwoPools true)
   const rounds = generateRoundRobin(teams);
-  const tracker: Record<string, { poolA: number; poolB: number; games: number }> = {};
-  teams.forEach(t => { tracker[t.id] = { poolA: 0, poolB: 0, games: 0 }; });
+  const tracker: Record<string, { games: number }> = {};
+  teams.forEach(t => { tracker[t.id] = { games: 0 }; });
 
-  // 4 teams in 2-pool: score-based assignment (avoids systematic Pool A bias from circle method)
-  if (teams.length === 4 && useTwoPools) {
-    return rounds.map((pairings, roundIndex) => {
-      const used = new Set<string>();
-      if (pairings.length < 2) {
-        const match = pairings[0] ?? null;
-        if (match) match.forEach(t => { tracker[t.id].games++; used.add(t.id); });
-        return { round: roundIndex, poolA: match, poolB: null, bye: teams.filter(t => !used.has(t.id)) };
-      }
-      const [m0, m1] = pairings;
-      const s0 = m0.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
-      const s1 = m1.reduce((s, t) => s + tracker[t.id].poolB - tracker[t.id].poolA, 0);
-      const poolA = s0 >= s1 ? m0 : m1;
-      const poolB = s0 >= s1 ? m1 : m0;
-      poolA.forEach(t => { tracker[t.id].poolA++; tracker[t.id].games++; used.add(t.id); });
-      poolB.forEach(t => { tracker[t.id].poolB++; tracker[t.id].games++; used.add(t.id); });
-      return { round: roundIndex, poolA, poolB, bye: teams.filter(t => !used.has(t.id)) };
-    });
-  }
-
-  // All other cases (5 teams, single-pool): original logic — DO NOT MODIFY
   return rounds.map((pairings, roundIndex) => {
     const used = new Set<string>();
-
-    if (!useTwoPools || pairings.length <= 1) {
-      const match = pairings[0] ?? null;
-      if (match) match.forEach(t => { tracker[t.id].games++; used.add(t.id); });
-      return { round: roundIndex, poolA: match, poolB: null, bye: teams.filter(t => !used.has(t.id)) };
-    }
-
-    let poolA: TournamentTeam[] | null = null;
-    let poolB: TournamentTeam[] | null = null;
-
-    pairings.forEach(match => {
-      if (poolB) return;
-      const [t1, t2] = match;
-      const canGoA = tracker[t1.id].poolA <= tracker[t1.id].poolB && tracker[t2.id].poolA <= tracker[t2.id].poolB;
-      const canGoB = tracker[t1.id].poolB <= tracker[t1.id].poolA && tracker[t2.id].poolB <= tracker[t2.id].poolA;
-
-      if (!poolA && canGoA) {
-        poolA = match; tracker[t1.id].poolA++; tracker[t2.id].poolA++;
-      } else if (!poolB && canGoB) {
-        poolB = match; tracker[t1.id].poolB++; tracker[t2.id].poolB++;
-      } else if (!poolA) {
-        poolA = match; tracker[t1.id].poolA++; tracker[t2.id].poolA++;
-      } else {
-        poolB = match; tracker[t1.id].poolB++; tracker[t2.id].poolB++;
-      }
-      tracker[t1.id].games++; tracker[t2.id].games++;
-      used.add(t1.id); used.add(t2.id);
-    });
-
-    return { round: roundIndex, poolA, poolB, bye: teams.filter(t => !used.has(t.id)) };
+    const match = pairings[0] ?? null;
+    if (match) match.forEach(t => { tracker[t.id].games++; used.add(t.id); });
+    return { round: roundIndex, poolA: match, poolB: null, bye: teams.filter(t => !used.has(t.id)) };
   });
 }
 
