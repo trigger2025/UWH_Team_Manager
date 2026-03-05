@@ -27,8 +27,11 @@ export async function exportTeamSections(
   const container = document.createElement("div");
   container.style.position = "fixed";
   container.style.top = "0";
-  container.style.left = "-99999px";
+  container.style.left = "-10000px";
   container.style.width = "1000px";
+  container.style.transform = "scale(1)";
+  container.style.transformOrigin = "top left";
+  container.style.background = BG;
   container.style.pointerEvents = "none";
   document.body.appendChild(container);
 
@@ -37,15 +40,17 @@ export async function exportTeamSections(
     createElement(TeamsExportLayout, { sections, includeRatings, includePositions, title })
   );
 
-  // Give React one tick to flush the render
-  await new Promise<void>((resolve) => setTimeout(resolve, 150));
+  // Wait for React to flush and fonts/layout to settle
+  await new Promise<void>((resolve) => setTimeout(resolve, 200));
 
   try {
-    const canvas = await html2canvas(container.firstElementChild as HTMLElement, {
+    const canvas = await html2canvas(container, {
       backgroundColor: BG,
-      scale: 2,
+      scale: 3,
       useCORS: true,
       logging: false,
+      windowWidth: 1000,
+      width: 1000,
     });
 
     await new Promise<void>((resolve, reject) => {
@@ -115,8 +120,10 @@ export async function exportElementAsImage(
   const wrapper = document.createElement("div");
   wrapper.style.position = "fixed";
   wrapper.style.top = "0";
-  wrapper.style.left = "-99999px";
+  wrapper.style.left = "-10000px";
   wrapper.style.width = "1000px";
+  wrapper.style.transform = "scale(1)";
+  wrapper.style.transformOrigin = "top left";
   wrapper.style.background = BG;
   wrapper.style.pointerEvents = "none";
   wrapper.appendChild(clone);
@@ -125,9 +132,11 @@ export async function exportElementAsImage(
   try {
     const canvas = await html2canvas(clone, {
       backgroundColor: BG,
-      scale: 2,
+      scale: 3,
       useCORS: true,
       logging: false,
+      windowWidth: 1000,
+      width: 1000,
     });
 
     await new Promise<void>((resolve, reject) => {

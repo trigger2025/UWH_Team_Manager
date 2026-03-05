@@ -40,7 +40,7 @@ function teamAccent(color?: string): string {
 
 export default function TeamsExportLayout({ sections, includeRatings, includePositions, title = "Generated Teams" }: Props) {
   return (
-    <div style={{ width: 1000, background: DARK, padding: 32, fontFamily: "system-ui, -apple-system, sans-serif", color: TEXT, boxSizing: "border-box" }}>
+    <div style={{ width: 1000, minWidth: 1000, maxWidth: 1000, background: DARK, padding: 40, fontFamily: "system-ui, -apple-system, sans-serif", color: TEXT, boxSizing: "border-box" }}>
       <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 24, color: TEXT, letterSpacing: "-0.02em" }}>
         {title}
       </div>
