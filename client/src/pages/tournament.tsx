@@ -396,7 +396,7 @@ export default function TournamentPage() {
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur border-b border-border/50 px-4 py-3 flex items-center justify-between">
+      <div className="sticky top-[env(safe-area-inset-top)] z-10 bg-background/80 backdrop-blur border-b border-border/50 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Trophy className="h-5 w-5 text-amber-400" />
           <h1 className="font-bold text-lg">Tournament</h1>

@@ -54,7 +54,7 @@ export default function PlayersPage() {
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border/50 px-6 py-4">
+      <div className="sticky top-[env(safe-area-inset-top)] z-40 bg-background/80 backdrop-blur-md border-b border-border/50 px-6 py-4">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl text-foreground font-bold">Roster</h1>
           <div className="flex gap-2">

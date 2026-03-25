@@ -520,7 +520,7 @@ export default function GeneratePage() {
   return (
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border/50 px-4 py-3">
+      <div className="sticky top-[env(safe-area-inset-top)] z-40 bg-background/80 backdrop-blur-md border-b border-border/50 px-4 py-3">
         <h1 className="text-xl font-bold flex items-center gap-2">
           <Swords className="h-5 w-5 text-primary" />
           Generate Teams

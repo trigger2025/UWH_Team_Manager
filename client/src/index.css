@@ -52,6 +52,12 @@
     font-family: var(--font-body);
     /* Prevent pull-to-refresh on mobile to feel like native app */
     overscroll-behavior-y: none;
+    /* Safe Area Fixes For Iphone */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  input, textarea, select {
+    font-size: 16px;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
@@ -84,4 +90,14 @@
 /* Glass effect utility */
 .glass-panel {
   @apply bg-card/80 backdrop-blur-md border border-white/10 shadow-xl;
+}
+  /* Fix iOS status bar showing scroll content */
+  .safe-top-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top);
+    background: hsl(var(--background));
+    z-index: 100;
 }

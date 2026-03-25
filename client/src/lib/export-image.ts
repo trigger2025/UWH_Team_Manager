@@ -1,4 +1,5 @@
 import html2canvas from "html2canvas";
+import { Media } from "@capacitor-community/media";
 
 const BG = "#0a0f1e";
 
@@ -21,11 +22,14 @@ export async function exportElementAsImage(
   const { includeRatings = true, includePositions = true } = options;
 
   const clone = element.cloneNode(true) as HTMLElement;
-  clone.style.width = "800px";
-  clone.style.maxWidth = "800px";
+
+  clone.style.width = "fit-content";
+  clone.style.minWidth = "100%";
+  clone.style.maxWidth = "none";
   clone.style.background = BG;
-  clone.style.padding = "16px";
+  clone.style.padding = "24px";
   clone.style.borderRadius = "0";
+  clone.style.boxSizing = "border-box";
 
   if (!includeRatings) {
     clone.querySelectorAll<HTMLElement>(".player-rating").forEach((el) => {
@@ -38,38 +42,44 @@ export async function exportElementAsImage(
       el.style.display = "none";
     });
   }
+    clone.querySelectorAll<HTMLElement>(".no-export").forEach((el) => {
+    el.style.display = "none";
+  });
 
   const wrapper = document.createElement("div");
   wrapper.style.position = "fixed";
-  wrapper.style.left = "-9999px";
   wrapper.style.top = "0";
+  wrapper.style.left = "0";
+  wrapper.style.opacity = "0";
   wrapper.style.pointerEvents = "none";
+  wrapper.style.zIndex = "-1";
   wrapper.appendChild(clone);
   document.body.appendChild(wrapper);
 
   try {
-    const canvas = await html2canvas(clone, {
-      backgroundColor: BG,
-      scale: 2,
-      useCORS: true,
-      logging: false,
-    });
+  const rect = clone.getBoundingClientRect();
 
-    await new Promise<void>((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (!blob) { reject(new Error("toBlob returned null")); return; }
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        resolve();
-      }, "image/png");
-    });
-  } finally {
-    document.body.removeChild(wrapper);
-  }
+  const canvas = await html2canvas(clone, {
+    backgroundColor: BG,
+    scale: 3,
+    width: rect.width,
+    height: rect.height,
+    windowWidth: rect.width,
+    windowHeight: rect.height,
+    useCORS: true,
+    logging: false
+  });
+
+  const dataUrl = canvas.toDataURL("image/png");
+
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+} finally {
+  document.body.removeChild(wrapper);
+}
 }
