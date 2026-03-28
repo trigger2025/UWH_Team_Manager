@@ -23,13 +23,18 @@ export async function exportElementAsImage(
 
   const clone = element.cloneNode(true) as HTMLElement;
 
-  clone.style.width = "fit-content";
-  clone.style.minWidth = "100%";
-  clone.style.maxWidth = "none";
+  clone.style.width = "1200px";
+  clone.style.minWidth = "1200px";
+  clone.style.maxWidth = "1200px";
   clone.style.background = BG;
   clone.style.padding = "24px";
   clone.style.borderRadius = "0";
   clone.style.boxSizing = "border-box";
+  
+  clone.querySelectorAll<HTMLElement>("*").forEach((el) => {
+    el.style.maxWidth = "none";
+    el.style.flexShrink = "0";
+  });
 
   if (!includeRatings) {
     clone.querySelectorAll<HTMLElement>(".player-rating").forEach((el) => {
@@ -57,15 +62,16 @@ export async function exportElementAsImage(
   document.body.appendChild(wrapper);
 
   try {
-  const rect = clone.getBoundingClientRect();
+  const width = clone.scrollWidth;
+  const height = clone.scrollHeight;
 
   const canvas = await html2canvas(clone, {
     backgroundColor: BG,
     scale: 3,
-    width: rect.width,
-    height: rect.height,
-    windowWidth: rect.width,
-    windowHeight: rect.height,
+    width: width,
+    height: height,
+    windowWidth: width,
+    windowHeight: height,
     useCORS: true,
     logging: false
   });

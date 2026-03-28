@@ -230,7 +230,7 @@ export default function PlayersPage() {
         <AddPlayerDialog>
           <Button 
             size="icon" 
-            className="h-16 w-16 rounded-full shadow-2xl shadow-primary/40 bg-primary hover:bg-primary/90 text-primary-foreground transition-all hover:scale-110 active:scale-95"
+            className="h-12 w-12 rounded-full shadow-2xl shadow-primary/40 bg-primary hover:bg-primary/90 text-primary-foreground transition-all hover:scale-110 active:scale-95"
           >
             <Plus className="h-8 w-8" />
           </Button>
