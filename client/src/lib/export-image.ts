@@ -23,19 +23,16 @@ export async function exportElementAsImage(
 
   const clone = element.cloneNode(true) as HTMLElement;
 
-  clone.style.width = "1200px";
-  clone.style.minWidth = "1200px";
-  clone.style.maxWidth = "1200px";
+  const rect = element.getBoundingClientRect();
+
+  clone.style.width = `${rect.width}px`;
+  clone.style.minWidth = `${rect.width}px`;
+  clone.style.maxWidth = `${rect.width}px`;
   clone.style.background = BG;
   clone.style.padding = "24px";
   clone.style.borderRadius = "0";
   clone.style.boxSizing = "border-box";
   
-  clone.querySelectorAll<HTMLElement>("*").forEach((el) => {
-    el.style.maxWidth = "none";
-    el.style.flexShrink = "0";
-  });
-
   if (!includeRatings) {
     clone.querySelectorAll<HTMLElement>(".player-rating").forEach((el) => {
       el.style.display = "none";
@@ -68,10 +65,8 @@ export async function exportElementAsImage(
   const canvas = await html2canvas(clone, {
     backgroundColor: BG,
     scale: 3,
-    width: width,
-    height: height,
-    windowWidth: width,
-    windowHeight: height,
+    width,
+    height,
     useCORS: true,
     logging: false
   });

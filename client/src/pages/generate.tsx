@@ -1667,7 +1667,7 @@ function PlayerRow({ player, index, isLast, onMove, onSwapPool, poolLabel, showR
           <Button
             variant="outline"
             size="sm"
-            className={`h-6 px-1.5 text-[9px] font-bold ${poolLabel === "A" ? 'text-violet-400 border-violet-400/30' : 'text-amber-400 border-amber-400/30'}`}
+            className={`no-export h-6 px-1.5 text-[9px] font-bold ${poolLabel === "A" ? 'text-violet-400 border-violet-400/30' : 'text-amber-400 border-amber-400/30'}`}
             onClick={(e) => {
               e.stopPropagation();
               onSwapPool();
@@ -1680,7 +1680,7 @@ function PlayerRow({ player, index, isLast, onMove, onSwapPool, poolLabel, showR
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6"
+          className="no-export h-6 w-6"
           onClick={(e) => {
             e.stopPropagation();
             onMove();
