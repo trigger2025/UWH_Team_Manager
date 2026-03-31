@@ -59,7 +59,7 @@ export async function exportElementAsImage(
   document.body.appendChild(wrapper);
 
   try {
-  const width = clone.scrollWidth;
+  const width = rect.width;
   const height = clone.scrollHeight;
 
   const canvas = await html2canvas(clone, {
