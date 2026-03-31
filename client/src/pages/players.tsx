@@ -226,11 +226,11 @@ export default function PlayersPage() {
       </AlertDialog>
 
       {/* FAB */}
-      <div className="fixed bottom-24 right-6 z-50">
+      <div className="fixed right-6 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-50">
         <AddPlayerDialog>
           <Button 
             size="icon" 
-            className="h-12 w-12 rounded-full shadow-2xl shadow-primary/40 bg-primary hover:bg-primary/90 text-primary-foreground transition-all hover:scale-110 active:scale-95"
+            className="h-15 w-15 rounded-full shadow-2xl shadow-primary/40 bg-primary hover:bg-primary/90 text-primary-foreground transition-all hover:scale-110 active:scale-95"
           >
             <Plus className="h-8 w-8" />
           </Button>
