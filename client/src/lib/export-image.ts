@@ -9,10 +9,12 @@ export interface ExportOptions {
 }
 
 /**
- * Captures an element as PNG using an off-screen clone so the
- * live UI is never mutated. Renders at the same width as the
- * on-screen element, preserves Tailwind styles, and saves to
- * camera roll (with download fallback).
+ * Captures an element as PNG using an off-screen clone.
+ * - Preserves Tailwind CSS (fixes clipping/squashing)
+ * - Matches real element width
+ * - Hides .no-export elements
+ * - Supports includeRatings / includePositions
+ * - Attempts camera roll save (fallback to download in PWA)
  */
 export async function exportElementAsImage(
   element: HTMLElement | null,
@@ -23,13 +25,13 @@ export async function exportElementAsImage(
 
   const { includeRatings = true, includePositions = true } = options;
 
-  // Measure the real on-screen element
+  // Measure the real element
   const rect = element.getBoundingClientRect();
 
   // Clone the element
   const clone = element.cloneNode(true) as HTMLElement;
 
-  // Off-screen wrapper
+  // Wrapper to hold clone + CSS
   const wrapper = document.createElement("div");
   wrapper.style.position = "fixed";
   wrapper.style.top = "0";
@@ -41,14 +43,14 @@ export async function exportElementAsImage(
   wrapper.style.height = "auto";
   wrapper.style.overflow = "hidden";
 
-  // Copy global styles (Tailwind, etc.) so typography/line-height match
+  // Copy global CSS (Tailwind + your styles)
   document
     .querySelectorAll("style, link[rel='stylesheet']")
     .forEach((node) => {
       wrapper.appendChild(node.cloneNode(true));
     });
 
-  // Style the clone to match the live layout width
+  // Style the clone to match the real UI
   clone.style.width = `${rect.width}px`;
   clone.style.minWidth = `${rect.width}px`;
   clone.style.maxWidth = `${rect.width}px`;
@@ -56,17 +58,19 @@ export async function exportElementAsImage(
   clone.style.overflow = "hidden";
   clone.style.background = BG;
   clone.style.padding = "24px";
-  clone.style.borderRadius = "0";
   clone.style.boxSizing = "border-box";
-  clone.style.lineHeight = "normal";
 
-  // Toggle ratings/positions
+  // Fix vertical clipping by enforcing a safe line-height
+  clone.style.lineHeight = "1.25";
+
+  // Hide ratings if needed
   if (!includeRatings) {
     clone.querySelectorAll<HTMLElement>(".player-rating").forEach((el) => {
       el.style.display = "none";
     });
   }
 
+  // Hide positions if needed
   if (!includePositions) {
     clone.querySelectorAll<HTMLElement>(".player-position").forEach((el) => {
       el.style.display = "none";
@@ -82,8 +86,8 @@ export async function exportElementAsImage(
   document.body.appendChild(wrapper);
 
   try {
-    // Let layout settle
-    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    // Allow layout to settle
+    await new Promise((resolve) => requestAnimationFrame(resolve));
 
     const width = rect.width;
     const height = clone.offsetHeight;
@@ -99,14 +103,14 @@ export async function exportElementAsImage(
 
     const dataUrl = canvas.toDataURL("image/png");
 
-    // Try saving to camera roll
+    // Try saving to camera roll (will fail silently in PWA)
     try {
       await Media.savePhoto({
         path: dataUrl,
         album: "Team Generator",
       });
     } catch {
-      // Fallback: download link (works in PWA / browser)
+      // Fallback: download
       const link = document.createElement("a");
       link.href = dataUrl;
       link.download = filename;
