@@ -8,14 +8,6 @@ export interface ExportOptions {
   includePositions?: boolean;
 }
 
-/**
- * Captures an element as PNG using an off-screen clone.
- * - Preserves Tailwind CSS (fixes clipping/squashing)
- * - Matches real element width
- * - Hides .no-export elements
- * - Supports includeRatings / includePositions
- * - Attempts camera roll save (fallback to download in PWA)
- */
 export async function exportElementAsImage(
   element: HTMLElement | null,
   filename: string,
@@ -25,13 +17,9 @@ export async function exportElementAsImage(
 
   const { includeRatings = true, includePositions = true } = options;
 
-  // Measure the real element
   const rect = element.getBoundingClientRect();
-
-  // Clone the element
   const clone = element.cloneNode(true) as HTMLElement;
 
-  // Wrapper to hold clone + CSS
   const wrapper = document.createElement("div");
   wrapper.style.position = "fixed";
   wrapper.style.top = "0";
@@ -43,14 +31,21 @@ export async function exportElementAsImage(
   wrapper.style.height = "auto";
   wrapper.style.overflow = "hidden";
 
-  // Copy global CSS (Tailwind + your styles)
-  document
-    .querySelectorAll("style, link[rel='stylesheet']")
-    .forEach((node) => {
-      wrapper.appendChild(node.cloneNode(true));
-    });
+  // Copy ALL CSS (Vite, Tailwind, Google Fonts, etc.)
+  document.querySelectorAll(`
+    link[rel='stylesheet'],
+    link[href*='assets'],
+    link[href*='index'],
+    style,
+    style[data-vite-dev-id],
+    style[id*='vite'],
+    style[id*='twind'],
+    style[data-twind]
+  `).forEach((node) => {
+    wrapper.appendChild(node.cloneNode(true));
+  });
 
-  // Style the clone to match the real UI
+  // Style the clone
   clone.style.width = `${rect.width}px`;
   clone.style.minWidth = `${rect.width}px`;
   clone.style.maxWidth = `${rect.width}px`;
@@ -60,8 +55,11 @@ export async function exportElementAsImage(
   clone.style.padding = "24px";
   clone.style.boxSizing = "border-box";
 
-  // Fix vertical clipping by enforcing a safe line-height
-  clone.style.lineHeight = "1.25";
+  // Fix vertical clipping
+  clone.style.lineHeight = "1.3";
+  clone.querySelectorAll("*").forEach((el) => {
+    (el as HTMLElement).style.lineHeight = "1.3";
+  });
 
   // Hide ratings if needed
   if (!includeRatings) {
@@ -77,7 +75,7 @@ export async function exportElementAsImage(
     });
   }
 
-  // Hide elements marked as no-export
+  // Hide .no-export elements
   clone.querySelectorAll<HTMLElement>(".no-export").forEach((el) => {
     el.style.display = "none";
   });
@@ -86,7 +84,6 @@ export async function exportElementAsImage(
   document.body.appendChild(wrapper);
 
   try {
-    // Allow layout to settle
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
     const width = rect.width;
@@ -103,14 +100,12 @@ export async function exportElementAsImage(
 
     const dataUrl = canvas.toDataURL("image/png");
 
-    // Try saving to camera roll (will fail silently in PWA)
     try {
       await Media.savePhoto({
         path: dataUrl,
         album: "Team Generator",
       });
     } catch {
-      // Fallback: download
       const link = document.createElement("a");
       link.href = dataUrl;
       link.download = filename;
