@@ -9,8 +9,10 @@ export interface ExportOptions {
 }
 
 /**
- * Captures an element as PNG using a fixed-width off-screen clone so the
- * live UI is never squashed or mutated. Uses toBlob (iOS Safari safe).
+ * Captures an element as PNG using an off-screen clone so the
+ * live UI is never mutated. Renders at the same width as the
+ * on-screen element, preserves Tailwind styles, and saves to
+ * camera roll (with download fallback).
  */
 export async function exportElementAsImage(
   element: HTMLElement | null,
@@ -21,18 +23,44 @@ export async function exportElementAsImage(
 
   const { includeRatings = true, includePositions = true } = options;
 
-  const clone = element.cloneNode(true) as HTMLElement;
-
+  // Measure the real on-screen element
   const rect = element.getBoundingClientRect();
 
+  // Clone the element
+  const clone = element.cloneNode(true) as HTMLElement;
+
+  // Off-screen wrapper
+  const wrapper = document.createElement("div");
+  wrapper.style.position = "fixed";
+  wrapper.style.top = "0";
+  wrapper.style.left = "0";
+  wrapper.style.opacity = "0";
+  wrapper.style.pointerEvents = "none";
+  wrapper.style.zIndex = "-1";
+  wrapper.style.width = `${rect.width}px`;
+  wrapper.style.height = "auto";
+  wrapper.style.overflow = "hidden";
+
+  // Copy global styles (Tailwind, etc.) so typography/line-height match
+  document
+    .querySelectorAll("style, link[rel='stylesheet']")
+    .forEach((node) => {
+      wrapper.appendChild(node.cloneNode(true));
+    });
+
+  // Style the clone to match the live layout width
   clone.style.width = `${rect.width}px`;
   clone.style.minWidth = `${rect.width}px`;
   clone.style.maxWidth = `${rect.width}px`;
+  clone.style.display = "block";
+  clone.style.overflow = "hidden";
   clone.style.background = BG;
   clone.style.padding = "24px";
   clone.style.borderRadius = "0";
   clone.style.boxSizing = "border-box";
-  
+  clone.style.lineHeight = "normal";
+
+  // Toggle ratings/positions
   if (!includeRatings) {
     clone.querySelectorAll<HTMLElement>(".player-rating").forEach((el) => {
       el.style.display = "none";
@@ -44,43 +72,49 @@ export async function exportElementAsImage(
       el.style.display = "none";
     });
   }
-    clone.querySelectorAll<HTMLElement>(".no-export").forEach((el) => {
+
+  // Hide elements marked as no-export
+  clone.querySelectorAll<HTMLElement>(".no-export").forEach((el) => {
     el.style.display = "none";
   });
 
-  const wrapper = document.createElement("div");
-  wrapper.style.position = "fixed";
-  wrapper.style.top = "0";
-  wrapper.style.left = "0";
-  wrapper.style.opacity = "0";
-  wrapper.style.pointerEvents = "none";
-  wrapper.style.zIndex = "-1";
   wrapper.appendChild(clone);
   document.body.appendChild(wrapper);
 
   try {
-  const width = rect.width;
-  const height = clone.scrollHeight;
+    // Let layout settle
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
-  const canvas = await html2canvas(clone, {
-    backgroundColor: BG,
-    scale: 3,
-    width,
-    height,
-    useCORS: true,
-    logging: false
-  });
+    const width = rect.width;
+    const height = clone.offsetHeight;
 
-  const dataUrl = canvas.toDataURL("image/png");
+    const canvas = await html2canvas(clone, {
+      backgroundColor: BG,
+      scale: 3,
+      width,
+      height,
+      useCORS: true,
+      logging: false,
+    });
 
-  const link = document.createElement("a");
-  link.href = dataUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+    const dataUrl = canvas.toDataURL("image/png");
 
-} finally {
-  document.body.removeChild(wrapper);
-}
+    // Try saving to camera roll
+    try {
+      await Media.savePhoto({
+        path: dataUrl,
+        album: "Team Generator",
+      });
+    } catch {
+      // Fallback: download link (works in PWA / browser)
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  } finally {
+    document.body.removeChild(wrapper);
+  }
 }
