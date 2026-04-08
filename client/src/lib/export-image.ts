@@ -2,16 +2,13 @@ import html2canvas from "html2canvas";
 import { Media } from "@capacitor-community/media";
 
 const BG = "#0a0f1e";
+const VIEWPORT_WIDTH = 408; // your real CSS width in portrait
 
 export interface ExportOptions {
   includeRatings?: boolean;
   includePositions?: boolean;
 }
 
-/**
- * Fully inlines ALL computed styles into the clone.
- * This is the only 100% reliable method for iOS PWAs.
- */
 export async function exportElementAsImage(
   element: HTMLElement | null,
   filename: string,
@@ -21,38 +18,37 @@ export async function exportElementAsImage(
 
   const { includeRatings = true, includePositions = true } = options;
 
-  const rect = element.getBoundingClientRect();
-
   // Clone the element
   const clone = element.cloneNode(true) as HTMLElement;
 
-  // Recursively inline computed styles
-  function inlineStyles(source: HTMLElement, target: HTMLElement) {
+  // Inline ONLY typography styles (Option B)
+  function inlineTypography(source: HTMLElement, target: HTMLElement) {
     const computed = window.getComputedStyle(source);
 
-    for (let i = 0; i < computed.length; i++) {
-      const prop = computed[i];
-      target.style.setProperty(prop, computed.getPropertyValue(prop));
-    }
+    const props = [
+      "font-size",
+      "font-family",
+      "font-weight",
+      "line-height",
+      "letter-spacing",
+      "text-transform",
+      "font-style",
+      "white-space"
+    ];
 
-    // Recurse through children
+    props.forEach((prop) => {
+      target.style.setProperty(prop, computed.getPropertyValue(prop));
+    });
+
     const sourceChildren = Array.from(source.children) as HTMLElement[];
     const targetChildren = Array.from(target.children) as HTMLElement[];
 
     sourceChildren.forEach((srcChild, i) => {
-      inlineStyles(srcChild, targetChildren[i] as HTMLElement);
+      inlineTypography(srcChild, targetChildren[i] as HTMLElement);
     });
   }
 
-  inlineStyles(element, clone);
-
-  // Apply export-specific overrides
-  clone.style.width = `${rect.width}px`;
-  clone.style.minWidth = `${rect.width}px`;
-  clone.style.maxWidth = `${rect.width}px`;
-  clone.style.background = BG;
-  clone.style.padding = "24px";
-  clone.style.boxSizing = "border-box";
+  inlineTypography(element, clone);
 
   // Hide ratings if needed
   if (!includeRatings) {
@@ -73,17 +69,25 @@ export async function exportElementAsImage(
     el.style.display = "none";
   });
 
-  // Wrapper to hold the clone
+  // Create a fixed 408px virtual viewport
   const wrapper = document.createElement("div");
   wrapper.style.position = "fixed";
   wrapper.style.top = "0";
   wrapper.style.left = "0";
+  wrapper.style.width = `${VIEWPORT_WIDTH}px`;
+  wrapper.style.minWidth = `${VIEWPORT_WIDTH}px`;
+  wrapper.style.maxWidth = `${VIEWPORT_WIDTH}px`;
   wrapper.style.opacity = "0";
   wrapper.style.pointerEvents = "none";
   wrapper.style.zIndex = "-1";
-  wrapper.style.width = `${rect.width}px`;
-  wrapper.style.height = "auto";
-  wrapper.style.overflow = "hidden";
+  wrapper.style.background = BG;
+  wrapper.style.padding = "24px";
+  wrapper.style.boxSizing = "border-box";
+
+  // Copy Tailwind + global CSS
+  document.querySelectorAll("link[rel='stylesheet'], style").forEach((node) => {
+    wrapper.appendChild(node.cloneNode(true));
+  });
 
   wrapper.appendChild(clone);
   document.body.appendChild(wrapper);
@@ -91,25 +95,23 @@ export async function exportElementAsImage(
   try {
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
-    const width = rect.width;
     const height = clone.offsetHeight;
 
     const canvas = await html2canvas(clone, {
       backgroundColor: BG,
       scale: 3,
-      width,
+      width: VIEWPORT_WIDTH,
       height,
       useCORS: true,
-      logging: false,
+      logging: false
     });
 
     const dataUrl = canvas.toDataURL("image/png");
 
-    // Try saving to camera roll (fails in PWA → fallback)
     try {
       await Media.savePhoto({
         path: dataUrl,
-        album: "Team Generator",
+        album: "Team Generator"
       });
     } catch {
       const link = document.createElement("a");
